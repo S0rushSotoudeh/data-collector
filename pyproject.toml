@@ -1,0 +1,10 @@
+[project]
+name = "data-collector"
+version = "0.1.0"
+description = "Data collection and analytics platform for HFT research"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+]
