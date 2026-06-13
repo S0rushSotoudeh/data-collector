@@ -11,4 +11,5 @@ dependencies = [
     "alembic>=1.14",
     "psycopg2-binary>=2.9",
     "httpx>=0.28.1",
+    "sqlmodel>=0.0.38",
 ]
