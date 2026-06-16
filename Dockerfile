@@ -22,10 +22,17 @@ RUN pip install --upgrade "pip>=26.1" --no-cache-dir && \
     uv sync --no-dev
 
 RUN useradd --create-home appuser
-USER appuser
 
+COPY --chown=appuser:appuser alembic/ /app/alembic/
+COPY --chown=appuser:appuser alembic.ini /app/
+COPY --chown=appuser:appuser entrypoint.sh /app/
 COPY --chown=appuser:appuser src/ /app/src/
+COPY --chown=appuser:appuser manage.py /app/
+
+RUN chmod +x /app/entrypoint.sh
+
+USER appuser
 
 EXPOSE 8000
 
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+ENTRYPOINT ["/app/entrypoint.sh"]
