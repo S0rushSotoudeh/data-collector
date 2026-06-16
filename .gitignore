@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 .venv/
 collector_venv
+.kilo/
+.kilocode/
