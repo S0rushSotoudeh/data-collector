@@ -54,7 +54,7 @@ async def get_async_client() -> AsyncClient:
     last_exc: Exception | None = None
     for attempt in range(_RETRIES):
         try:
-            _async_client = clickhouse_connect.get_async_client(
+            _async_client = await clickhouse_connect.get_async_client(
                 host=os.getenv("CLICKHOUSE_HOST", "localhost"),
                 port=int(os.getenv("CLICKHOUSE_PORT", "9000")),
                 username=os.getenv("CLICKHOUSE_USER", "default"),

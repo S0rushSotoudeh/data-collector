@@ -20,7 +20,7 @@ class TestBondInstrument:
 
     def test_instrument_code_required(self) -> None:
         with pytest.raises(ValidationError):
-            BondInstrument()
+            BondInstrument.model_validate({})
 
     def test_instrument_id_unique(self) -> None:
         field = BondInstrument.model_fields["instrument_id"]

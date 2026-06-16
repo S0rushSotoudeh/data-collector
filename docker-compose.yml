@@ -11,6 +11,7 @@ services:
     volumes:
       # Mount source code for hot-reload during development
       - ./src:/app/src
+      - ./pyproject.toml:/app/pyproject.toml
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379

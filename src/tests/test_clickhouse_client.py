@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -68,8 +68,8 @@ class TestGetClient:
 class TestGetAsyncClient:
     async def test_successful_connection(self, reset_client_cache) -> None:
         with patch("src.db.clickhouse.clickhouse_connect.get_async_client") as m:
-            instance = MagicMock()
-            instance.query = MagicMock()
+            instance = AsyncMock()
+            instance.query = AsyncMock()
             m.return_value = instance
 
             client = await get_async_client()
@@ -78,7 +78,7 @@ class TestGetAsyncClient:
 
     async def test_async_all_retries_fail_raises(self, reset_client_cache) -> None:
         with patch("src.db.clickhouse.clickhouse_connect.get_async_client") as m:
-            instance = MagicMock()
+            instance = AsyncMock()
             instance.query.side_effect = RuntimeError("Down")
             m.return_value = instance
 
@@ -87,8 +87,8 @@ class TestGetAsyncClient:
 
     async def test_async_cached_client_used(self, reset_client_cache) -> None:
         with patch("src.db.clickhouse.clickhouse_connect.get_async_client") as m:
-            instance = MagicMock()
-            instance.query = MagicMock()
+            instance = AsyncMock()
+            instance.query = AsyncMock()
             m.return_value = instance
 
             first = await get_async_client()
