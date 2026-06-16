@@ -20,7 +20,9 @@ services:
       - POSTGRES_PASSWORD=dc_pass
       - POSTGRES_DB=dc_metadata
       - CLICKHOUSE_HOST=clickhouse
-      - CLICKHOUSE_PORT=9000
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
     depends_on:
       redis:
         condition: service_started
@@ -66,6 +68,9 @@ services:
     ports:
       - "8123:8123"   # HTTP interface
       - "9000:9000"   # Native TCP interface
+    environment:
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     healthcheck:

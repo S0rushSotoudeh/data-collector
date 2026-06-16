@@ -5,7 +5,7 @@ from sqlalchemy import Column, DateTime, func, Index
 from sqlmodel import SQLModel, Field
 
 
-class BondInstrument(SQLModel, table=True):
+class BondInstrument(SQLModel, table=True):  # type: ignore
     __tablename__ = "bond_instruments"
 
     instrument_code: str = Field(primary_key=True, max_length=20)
@@ -13,7 +13,7 @@ class BondInstrument(SQLModel, table=True):
     name_en: str | None = Field(default=None, max_length=100)
     symbol: str | None = Field(default=None, max_length=50)
     isin: str | None = Field(default=None, max_length=30, unique=True)
-    instrument_id: str | None = Field(default=None, max_length=50)
+    instrument_id: str | None = Field(default=None, max_length=50, unique=True)
     total_issued: int | None = Field(default=None)
     base_volume: int | None = Field(default=None)
     market_code: int | None = Field(default=None)
@@ -29,7 +29,7 @@ class BondInstrument(SQLModel, table=True):
     low_yearly: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
     high_yearly: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
     avg_daily_volume_5y: int | None = Field(default=None)
-    last_trade_date: int | None = Field(default=None)
+    last_trade_date: date | None = Field(default=None)
     status: str | None = Field(default=None, max_length=20)
     maturity_date: date | None = Field(default=None)
     listing_date: date | None = Field(default=None)

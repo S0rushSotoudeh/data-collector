@@ -2,7 +2,12 @@
 Django-like management commands for data-collector.
 
 Usage:
-    python manage.py shell      # Open interactive Python shell with project imports
+    python manage.py shell                    # Open interactive Python shell
+    python manage.py clickhouse migrate        # Apply all pending ClickHouse migrations
+    python manage.py clickhouse downgrade      # Revert last ClickHouse migration
+    python manage.py clickhouse history        # Show ClickHouse migration history
+    python manage.py clickhouse pending        # List pending ClickHouse migrations
+    python manage.py clickhouse check          # Exit non-zero if pending migrations exist
 """
 
 import os
@@ -52,16 +57,90 @@ def cmd_shell(args):
         code.interact(banner=banner, local=namespace)
 
 
+def cmd_ch_migrate(args):
+    from src.db.clickhouse.schema import run_migrations
+
+    applied = run_migrations()
+    if applied:
+        print(f"Applied {len(applied)} migration(s): {applied}")
+    else:
+        print("Already up to date — no migrations to apply.")
+
+
+def cmd_ch_downgrade(args):
+    from src.db.clickhouse.schema import downgrade_migration
+
+    reverted = downgrade_migration()
+    print(f"Reverted migration: {reverted}")
+
+
+def cmd_ch_history(args):
+    from src.db.clickhouse.schema import migration_history
+
+    rows = migration_history()
+    if not rows:
+        print("No migrations have been applied.")
+        return
+    print(f"{'Version':>8}  {'Name':<40}  {'Applied At'}")
+    print("-" * 80)
+    for r in rows:
+        print(f"{r['version']:>8}  {r['name']:<40}  {r['applied_at']}")
+
+
+def cmd_ch_pending(args):
+    from src.db.clickhouse.schema import migration_pending
+
+    pending_versions = migration_pending()
+    if pending_versions:
+        print(f"Pending migrations: {pending_versions}")
+    else:
+        print("All migrations have been applied.")
+
+
+def cmd_ch_check(args):
+    from src.db.clickhouse.schema import migration_check
+
+    ok = migration_check()
+    if ok:
+        print("All migrations applied.")
+        sys.exit(0)
+    else:
+        print("There are pending migrations!")
+        sys.exit(1)
+
+
 def main():
     parser = argparse.ArgumentParser(prog="manage.py", description="Data Collector management commands")
     sub = parser.add_subparsers(dest="command")
 
-    shell = sub.add_parser("shell", help="Open an interactive Python shell with project imports pre-loaded")
+    sub.add_parser("shell", help="Open interactive Python shell with project imports pre-loaded")
+
+    ch = sub.add_parser("clickhouse", help="ClickHouse migration management")
+    ch_sub = ch.add_subparsers(dest="ch_command")
+
+    ch_sub.add_parser("migrate", help="Apply all pending ClickHouse migrations")
+    ch_sub.add_parser("downgrade", help="Revert the last ClickHouse migration")
+    ch_sub.add_parser("history", help="Show ClickHouse migration history")
+    ch_sub.add_parser("pending", help="List pending ClickHouse migrations")
+    ch_sub.add_parser("check", help="Exit non-zero if there are pending migrations")
 
     args = parser.parse_args()
 
     if args.command == "shell":
         cmd_shell(args)
+    elif args.command == "clickhouse":
+        if args.ch_command == "migrate":
+            cmd_ch_migrate(args)
+        elif args.ch_command == "downgrade":
+            cmd_ch_downgrade(args)
+        elif args.ch_command == "history":
+            cmd_ch_history(args)
+        elif args.ch_command == "pending":
+            cmd_ch_pending(args)
+        elif args.ch_command == "check":
+            cmd_ch_check(args)
+        else:
+            parser.print_help()
     else:
         parser.print_help()
 

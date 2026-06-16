@@ -1,0 +1,206 @@
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from src.db.clickhouse.migrations.manager import (
+    MIGRATIONS_TABLE,
+    _ensure_migrations_table,
+    _get_applied_versions,
+    _discover_versions,
+    _mark_applied,
+    _mark_removed,
+    upgrade,
+    downgrade,
+    history,
+    pending,
+    check,
+)
+
+
+class TestMigrationManagerInternals:
+    def test_ensure_migrations_table_creates_table(self) -> None:
+        client = MagicMock()
+        _ensure_migrations_table(client)
+        ddl = client.command.call_args[0][0]
+        assert MIGRATIONS_TABLE in ddl
+        assert "CREATE TABLE IF NOT EXISTS" in ddl
+
+    def test_get_applied_versions_returns_sorted(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(3,), (1,)]
+        versions = _get_applied_versions(client)
+        assert versions == [3, 1]
+
+    def test_get_applied_versions_empty(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = []
+        versions = _get_applied_versions(client)
+        assert versions == []
+
+    def test_discover_versions_finds_all(self) -> None:
+        versions = _discover_versions()
+        assert 1 in versions
+        assert 2 in versions
+        assert 3 in versions
+        module_path_1, short_name_1 = versions[1]
+        assert "001_create_schema_migrations" in module_path_1
+        assert short_name_1 == "001_create_schema_migrations.py"
+        module_path_2, short_name_2 = versions[2]
+        assert "002_create_bond_order_book" in module_path_2
+        assert short_name_2 == "002_create_bond_order_book.py"
+        module_path_3, short_name_3 = versions[3]
+        assert "003_create_bond_trades" in module_path_3
+        assert short_name_3 == "003_create_bond_trades.py"
+
+    def test_mark_applied_inserts_row(self) -> None:
+        client = MagicMock()
+        _mark_applied(client, 5, "005_test")
+        sql = client.command.call_args[0][0]
+        assert MIGRATIONS_TABLE in sql
+        assert "5" in sql
+        assert "005_test" in sql
+
+    def test_mark_removed_deletes_row(self) -> None:
+        client = MagicMock()
+        _mark_removed(client, 5)
+        sql = client.command.call_args[0][0]
+        assert MIGRATIONS_TABLE in sql
+        assert "DELETE WHERE version = 5" in sql
+
+
+class TestUpgrade:
+    def test_upgrade_applies_all_pending(self) -> None:
+        applied = []
+
+        def track_applied(client, version, name):
+            applied.append(version)
+
+        client = MagicMock()
+        client.query.return_value.result_rows = []
+
+        with (
+            patch("src.db.clickhouse.migrations.manager.get_client", return_value=client),
+            patch("src.db.clickhouse.migrations.manager._mark_applied", side_effect=track_applied),
+        ):
+            new_versions = upgrade()
+
+        assert len(new_versions) == 3
+        assert applied == [1, 2, 3]
+
+    def test_upgrade_skips_already_applied(self) -> None:
+        applied = []
+
+        def track_applied(client, version, name):
+            applied.append(version)
+
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,), (2,)]
+
+        with (
+            patch("src.db.clickhouse.migrations.manager.get_client", return_value=client),
+            patch("src.db.clickhouse.migrations.manager._mark_applied", side_effect=track_applied),
+        ):
+            new_versions = upgrade()
+
+        assert new_versions == [3]
+        assert applied == [3]
+
+    def test_upgrade_all_already_applied(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+
+        with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
+            new_versions = upgrade()
+
+        assert new_versions == []
+
+    def test_upgrade_with_explicit_client(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = []
+
+        new_versions = upgrade(client)
+
+        assert len(new_versions) == 3
+
+
+class TestDowngrade:
+    def test_downgrade_reverts_last(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+
+        result = downgrade(client)
+
+        assert result == 3
+        # Verify mark_removed was called
+        sql = client.command.call_args_list[-1][0][0]
+        assert "DELETE WHERE version = 3" in sql
+
+    def test_downgrade_no_migrations_applied(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = []
+
+        with pytest.raises(RuntimeError, match="No migrations have been applied"):
+            downgrade(client)
+
+    def test_downgrade_missing_version_file(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(999,)]
+
+        with pytest.raises(RuntimeError, match="is applied but no version file found"):
+            downgrade(client)
+
+
+class TestHistory:
+    def test_history_returns_all_applied(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [
+            (1, "001_test", "2024-01-01 00:00:00"),
+            (2, "002_test", "2024-01-02 00:00:00"),
+        ]
+
+        rows = history(client)
+
+        assert len(rows) == 2
+        assert rows[0]["version"] == 1
+        assert rows[0]["name"] == "001_test"
+        assert rows[1]["version"] == 2
+
+    def test_history_empty(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = []
+
+        rows = history(client)
+        assert rows == []
+
+
+class TestPending:
+    def test_pending_returns_unapplied(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,)]
+
+        p = pending(client)
+
+        assert 2 in p
+        assert 3 in p
+        assert 1 not in p
+
+    def test_pending_none(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+
+        p = pending(client)
+        assert p == []
+
+
+class TestCheck:
+    def test_check_true_when_up_to_date(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+
+        assert check(client) is True
+
+    def test_check_false_when_pending(self) -> None:
+        client = MagicMock()
+        client.query.return_value.result_rows = [(1,)]
+
+        assert check(client) is False

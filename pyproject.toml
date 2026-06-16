@@ -5,6 +5,7 @@ description = "Data collection and analytics platform for HFT research"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "aiohttp>=3.11",
     "fastapi",
     "uvicorn[standard]",
     "sqlalchemy>=2.0",
@@ -13,4 +14,7 @@ dependencies = [
     "httpx>=0.28.1",
     "sqlmodel>=0.0.38",
     "ipython>=9.14.1",
+    "clickhouse-connect>=0.8",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
 ]
