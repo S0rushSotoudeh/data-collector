@@ -72,7 +72,7 @@ The goal is to collect tick-level data (price, volume, bid/ask) simultaneously f
 
 | Layer | Technology | Why |
 |-------|-----------|-----|
-| **Collectors** | **Python 3.14** | Async I/O handles 700+ concurrent scrapes per second. Best ecosystem for web scraping (BeautifulSoup, lxml). |
+| **Collectors** | **Python 3.13** | Async I/O handles 700+ concurrent scrapes per second. Best ecosystem for web scraping (BeautifulSoup, lxml). |
 | **Message Queue** | **Redis Streams** | Ultra-low latency, no extra infrastructure (Redis is already needed for caching). |
 | **Cache / Pub-Sub** | **Redis** | Caches latest tick per symbol for instant API responses. Pub/Sub pushes real-time updates to WebSocket clients. |
 | **Time-Series Storage** | **ClickHouse** | Columnar OLAP database for all time-series data. 5-10× compression, sub-100ms aggregation queries on billions of rows. |
@@ -120,3 +120,62 @@ Every 1 second:
 - **ClickHouse for time-series, PostgreSQL for metadata** — ClickHouse's columnar engine handles all tick storage and analytical queries with high compression and sub-100ms aggregations. PostgreSQL serves as the source of truth for symbol metadata, user management, and configuration data.
 - **Graceful degradation** — Market data scraping is inherently unreliable (rate limits, network issues, site changes). Every component handles transient failures with retries, backoff, and partial data availability.
 - **Developer experience** — The stack prioritizes tools with minimal configuration, good documentation, and strong communities.
+
+---
+
+## Development Workflow
+
+All code is developed and tested inside Docker Compose — do not run Python directly on the host.
+
+### Hot Reload
+
+The `api` service uses `uvicorn --reload` and mounts `./src:/app/src` as a volume. Any change to Python files in `src/` triggers an automatic server restart inside the container.
+
+### Running Tests
+
+```bash
+# Run tests in the api container
+docker compose exec api python -m pytest
+
+# Or with coverage
+docker compose exec api python -m pytest --cov=src
+
+# Run a specific test file
+docker compose exec api python -m pytest src/tests/test_file.py
+```
+
+### Running Code
+
+```bash
+# Start all services
+docker compose up --build
+
+# Rebuild and start in detached mode (background)
+docker compose up --build -d
+
+# View logs
+docker compose logs -f api
+
+# Restart a single service after code changes (handled automatically by --reload, but can force if needed)
+docker compose restart api
+```
+
+### Managing Dependencies
+
+```bash
+# Add a dependency
+docker compose exec api uv add some-package
+
+# Remove a dependency
+docker compose exec api uv remove some-package
+
+# Sync lockfile
+docker compose exec api uv sync
+```
+
+### Linting & Type Checking
+
+```bash
+docker compose exec api ruff check src/
+docker compose exec api mypy src/
+```
