@@ -38,17 +38,32 @@ async def get_order_book_history(
     return [_row_to_dict_ob(r) for r in rows]
 
 
+async def get_latest_order_books(
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    q = (
+        f"SELECT * FROM `{ORDER_BOOK_TABLE}` "
+        f"ORDER BY ingested_at DESC "
+        f"LIMIT {{lim:UInt16}}"
+    )
+    rows = (await client.query(q, parameters={"lim": limit})).result_rows
+    return [_row_to_dict_ob(r) for r in rows]
+
+
 async def get_trade_history(
     instrument_code: str,
     trade_date: date,
+    limit: int = 500,
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
     q = (
         f"SELECT * FROM `{TRADES_TABLE}` "
         f"WHERE instrument_code = {{code:String}} AND trade_date = {{dt:Date}} "
-        f"ORDER BY trade_time ASC"
+        f"ORDER BY trade_time ASC "
+        f"LIMIT {{lim:UInt16}}"
     )
-    rows = (await client.query(q, parameters={"code": instrument_code, "dt": trade_date})).result_rows
+    rows = (await client.query(q, parameters={"code": instrument_code, "dt": trade_date, "lim": limit})).result_rows
     return [_row_to_dict_tr(r) for r in rows]
 
 
@@ -149,7 +164,7 @@ async def get_latest_trades(
         f"SELECT * FROM `{TRADES_TABLE}` "
         f"WHERE trade_date >= today() - 1 "
         f"ORDER BY trade_date DESC, trade_time DESC "
-        f"LIMIT {{lim:UInt8}}"
+        f"LIMIT {{lim:UInt16}}"
     )
     rows = (await client.query(q, parameters={"lim": limit})).result_rows
     return [_row_to_dict_tr(r) for r in rows]
