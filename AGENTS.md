@@ -94,7 +94,8 @@ The goal is to collect tick-level data (price, volume, bid/ask) simultaneously f
 | **ClickHouse schema** | ✅ Done | `bond_order_book` (5-level depth), `bond_trades` via custom migration system (3 versions) |
 | **ClickHouse queries** | ✅ Done | 7 query functions: latest order book, history, trades, VWAP, OHLCV, spread, latest trades |
 | **Price conversion** | ✅ Done | Int64 storage (rials) with `price_to_storage`/`price_from_storage` |
-| **FastAPI skeleton** | ✅ Done | 2 endpoints: `GET /`, `GET /health` |
+| **FastAPI skeleton** | ✅ Done | `GET /`, `GET /health`, SessionMiddleware, admin panel wired in |
+| **Admin Panel** | ✅ Done | SQLAdmin with `sqladmin[full]>=0.27`. 3 views: `BondInstrumentAdmin` (CRUD), `BondOrderBookView` (query by code+date, latest snapshots), `BondTradesView` (query by code+date, latest trades). BasicAuth via `ADMIN_USER`/`ADMIN_PASSWORD`. Bound to `/admin`. |
 | **Manage CLI** | ✅ Done | `manage.py shell`, `manage.py clickhouse {migrate,downgrade,history,pending,check}` |
 | **TSETMC Bond Scraper** | ⚠️ Prototype | `explore-data-sources/akhza_history.py` — fetches instrument info & best limits from TSETMC |
 | **TSETMC Stock Scraper** | ❌ Missing | — |
@@ -124,9 +125,16 @@ C:\project\data_collector\
 │   ├── env.py
 │   └── versions/               # 2 migrations: initial + fix last_trade_date
 ├── src/
-│   ├── main.py                 # FastAPI app (placeholder)
+│   ├── main.py                 # FastAPI app (admin panel wired in)
+│   ├── admin/
+│   │   ├── __init__.py         # SQLAdmin setup, 3 views registered
+│   │   ├── auth.py             # BasicAuthBackend (ADMIN_USER/ADMIN_PASSWORD)
+│   │   ├── bond_views.py       # BondInstrumentAdmin (CRUD ModelView)
+│   │   └── clickhouse_views.py # BondOrderBookView + BondTradesView (custom BaseView)
 │   ├── db/
 │   │   ├── __init__.py
+│   │   ├── config.py           # get_database_url() for PostgreSQL
+│   │   ├── session.py          # SQLAlchemy engine + SessionLocal
 │   │   ├── models/
 │   │   │   ├── __init__.py
 │   │   │   └── bond.py         # BondInstrument SQLModel (30+ columns)
@@ -192,7 +200,7 @@ Every 1 second:
 
 ## Current State
 
-The **database layer** is the most complete part. ClickHouse migrations, PostgreSQL schema, and all analytical query functions are implemented and tested. The surface area (API, collectors, Redis pipeline, frontend) is not yet built.
+The **database layer** is the most complete part. ClickHouse migrations, PostgreSQL schema, and all analytical query functions are implemented and tested. The **admin panel** (SQLAdmin) provides CRUD for bond instruments and read-only views for ClickHouse data. The surface area (collectors, Redis pipeline, API endpoints, frontend) is not yet built.
 
 ### PostgreSQL Schema (`bond_instruments`)
 
