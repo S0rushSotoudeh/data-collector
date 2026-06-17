@@ -2,8 +2,9 @@
 Django-like management commands for data-collector.
 
 Usage:
-    python manage.py shell                    # Open interactive Python shell
-    python manage.py clickhouse migrate        # Apply all pending ClickHouse migrations
+python manage.py shell                    # Open interactive Python shell
+    python manage.py bond-sync                # Sync bonds + backfill last 7 days of order books
+    python manage.py clickhouse migrate       # Apply all pending ClickHouse migrations
     python manage.py clickhouse downgrade      # Revert last ClickHouse migration
     python manage.py clickhouse history        # Show ClickHouse migration history
     python manage.py clickhouse pending        # List pending ClickHouse migrations
@@ -115,6 +116,8 @@ def main():
 
     sub.add_parser("shell", help="Open interactive Python shell with project imports pre-loaded")
 
+    sub.add_parser("bond-sync", help="Sync bond instruments and backfill last 7 days of order books")
+
     ch = sub.add_parser("clickhouse", help="ClickHouse migration management")
     ch_sub = ch.add_subparsers(dest="ch_command")
 
@@ -126,7 +129,11 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "shell":
+    if args.command == "bond-sync":
+        from src.collectors.bond.run_sync import main
+        import asyncio
+        asyncio.run(main())
+    elif args.command == "shell":
         cmd_shell(args)
     elif args.command == "clickhouse":
         if args.ch_command == "migrate":

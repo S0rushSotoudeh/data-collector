@@ -15,7 +15,8 @@ def insert_order_book(rows: list[dict[str, Any]], client: Client | None = None) 
             row["bid_price"] = price_to_storage(row["bid_price"])
         if "ask_price" in row:
             row["ask_price"] = price_to_storage(row["ask_price"])
-    c.insert(ORDER_BOOK_TABLE, rows, column_names=ORDER_BOOK_COLUMNS)
+    data = [tuple(row.get(col) for col in ORDER_BOOK_COLUMNS) for row in rows]
+    c.insert(ORDER_BOOK_TABLE, data, column_names=ORDER_BOOK_COLUMNS)
 
 
 def insert_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
@@ -27,4 +28,5 @@ def insert_trades(rows: list[dict[str, Any]], client: Client | None = None) -> N
             row["price"] = price_to_storage(row["price"])
         if "value" in row:
             row["value"] = price_to_storage(row["value"])
-    c.insert(TRADES_TABLE, rows, column_names=TRADES_COLUMNS)
+    data = [tuple(row.get(col) for col in TRADES_COLUMNS) for row in rows]
+    c.insert(TRADES_TABLE, data, column_names=TRADES_COLUMNS)

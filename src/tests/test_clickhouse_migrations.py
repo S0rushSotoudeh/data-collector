@@ -84,8 +84,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 3
-        assert applied == [1, 2, 3]
+        assert len(new_versions) == 4
+        assert applied == [1, 2, 3, 4]
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -102,12 +102,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == [3]
-        assert applied == [3]
+        assert new_versions == [3, 4]
+        assert applied == [3, 4]
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,)]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -120,20 +120,20 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 3
+        assert len(new_versions) == 4
 
 
 class TestDowngrade:
     def test_downgrade_reverts_last(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,)]
 
         result = downgrade(client)
 
-        assert result == 3
+        assert result == 4
         # Verify mark_removed was called
         sql = client.command.call_args_list[-1][0][0]
-        assert "DELETE WHERE version = 3" in sql
+        assert "DELETE WHERE version = 4" in sql
 
     def test_downgrade_no_migrations_applied(self) -> None:
         client = MagicMock()
@@ -182,11 +182,12 @@ class TestPending:
 
         assert 2 in p
         assert 3 in p
+        assert 4 in p
         assert 1 not in p
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,)]
 
         p = pending(client)
         assert p == []
@@ -195,7 +196,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,)]
 
         assert check(client) is True
 

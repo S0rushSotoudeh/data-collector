@@ -15,7 +15,7 @@ async def get_latest_order_book(
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
     q = (
-        f"SELECT * FROM `{ORDER_BOOK_TABLE}` "
+        f"SELECT * FROM `{ORDER_BOOK_TABLE}` FINAL "
         f"WHERE instrument_code = {{code:String}} AND trade_date = {{dt:Date}} "
         f"ORDER BY trade_time DESC, depth_level ASC "
         f"LIMIT 5"
@@ -30,7 +30,7 @@ async def get_order_book_history(
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
     q = (
-        f"SELECT * FROM `{ORDER_BOOK_TABLE}` "
+        f"SELECT * FROM `{ORDER_BOOK_TABLE}` FINAL "
         f"WHERE instrument_code = {{code:String}} AND trade_date = {{dt:Date}} "
         f"ORDER BY trade_time ASC, depth_level ASC"
     )
@@ -43,7 +43,7 @@ async def get_latest_order_books(
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
     q = (
-        f"SELECT * FROM `{ORDER_BOOK_TABLE}` "
+        f"SELECT * FROM `{ORDER_BOOK_TABLE}` FINAL "
         f"ORDER BY ingested_at DESC "
         f"LIMIT {{lim:UInt16}}"
     )
@@ -58,7 +58,7 @@ async def get_trade_history(
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
     q = (
-        f"SELECT * FROM `{TRADES_TABLE}` "
+        f"SELECT * FROM `{TRADES_TABLE}` FINAL "
         f"WHERE instrument_code = {{code:String}} AND trade_date = {{dt:Date}} "
         f"ORDER BY trade_time ASC "
         f"LIMIT {{lim:UInt16}}"
@@ -78,7 +78,7 @@ async def get_vwap(
         f"    sum(volume) AS total_volume, "
         f"    sum(value) AS total_value, "
         f"    count() AS trade_count "
-        f"FROM `{TRADES_TABLE}` "
+        f"FROM `{TRADES_TABLE}` FINAL "
         f"WHERE instrument_code = {{code:String}} "
         f"  AND trade_date = {{dt:Date}} "
         f"  AND is_canceled = 0"
@@ -108,7 +108,7 @@ async def get_ohlcv(
         f"    argMax(price, trade_time) AS close, "
         f"    sum(volume) AS volume, "
         f"    toFloat64(sum(value)) / toFloat64(sum(volume)) AS vwap "
-        f"FROM `{TRADES_TABLE}` "
+        f"FROM `{TRADES_TABLE}` FINAL "
         f"WHERE instrument_code = {{code:String}} "
         f"  AND trade_date = {{dt:Date}} "
         f"  AND is_canceled = 0 "
@@ -140,7 +140,7 @@ async def get_daily_spread(
         f"    min(ask_price - bid_price) AS min_spread, "
         f"    max(ask_price - bid_price) AS max_spread, "
         f"    avg(ask_price - bid_price) AS avg_spread "
-        f"FROM `{ORDER_BOOK_TABLE}` "
+        f"FROM `{ORDER_BOOK_TABLE}` FINAL "
         f"WHERE instrument_code = {{code:String}} "
         f"  AND trade_date = {{dt:Date}} "
         f"  AND depth_level = 1 "
@@ -161,7 +161,7 @@ async def get_latest_trades(
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
     q = (
-        f"SELECT * FROM `{TRADES_TABLE}` "
+        f"SELECT * FROM `{TRADES_TABLE}` FINAL "
         f"WHERE trade_date >= today() - 1 "
         f"ORDER BY trade_date DESC, trade_time DESC "
         f"LIMIT {{lim:UInt16}}"

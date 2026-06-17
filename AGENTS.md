@@ -91,19 +91,19 @@ The goal is to collect tick-level data (price, volume, bid/ask) simultaneously f
 |-----------|--------|----------------|
 | **Docker Compose** | ✅ Done | 4 services: `api` (FastAPI), `redis`, `postgres`, `clickhouse` |
 | **PostgreSQL schema** | ✅ Done | `bond_instruments` table via SQLModel + alembic (2 migrations applied) |
-| **ClickHouse schema** | ✅ Done | `bond_order_book` (5-level depth), `bond_trades` via custom migration system (3 versions) |
+| **ClickHouse schema** | ✅ Done | `bond_order_book` (5-level depth, ReplacingMergeTree), `bond_trades` (ReplacingMergeTree) via custom migration system (4 versions) |
 | **ClickHouse queries** | ✅ Done | 7 query functions: latest order book, history, trades, VWAP, OHLCV, spread, latest trades |
 | **Price conversion** | ✅ Done | Int64 storage (rials) with `price_to_storage`/`price_from_storage` |
 | **FastAPI skeleton** | ✅ Done | `GET /`, `GET /health`, SessionMiddleware, admin panel wired in |
 | **Admin Panel** | ✅ Done | SQLAdmin with `sqladmin[full]>=0.27`. 3 views: `BondInstrumentAdmin` (CRUD), `BondOrderBookView` (query by code+date, latest snapshots), `BondTradesView` (query by code+date, latest trades). BasicAuth via `ADMIN_USER`/`ADMIN_PASSWORD`. Bound to `/admin`. |
-| **Manage CLI** | ✅ Done | `manage.py shell`, `manage.py clickhouse {migrate,downgrade,history,pending,check}` |
-| **TSETMC Bond Scraper** | ⚠️ Prototype | `explore-data-sources/akhza_history.py` — fetches instrument info & best limits from TSETMC |
+| **Manage CLI** | ✅ Done | `manage.py shell`, `manage.py bond-sync`, `manage.py clickhouse {migrate,downgrade,history,pending,check}` |
+| **TSETMC Bond Scraper** | ✅ Done | `src/collectors/bond/` — async client (semaphore+retry), instrument sync (PG upsert), order book backfill (CH insert). `explore-data-sources/akhza_history.py` — original prototype |
 | **TSETMC Stock Scraper** | ❌ Missing | — |
 | **SignalR Listener** | ❌ Missing | Placeholder files exist (empty) |
 | **Crypto Fetcher** | ❌ Missing | — |
 | **Redis Streams** | ❌ Missing | Redis service running, no code writes/reads streams |
 | **Redis Cache** | ❌ Missing | — |
-| **ClickHouse Writer** | ❌ Missing | Insert functions exist (`insert.py`) but no consumer loop |
+| **ClickHouse Writer** | ✅ Done | Insert functions wired via `order_book_fetcher.py`. Backfill writes directly to ClickHouse tables. |
 | **FastAPI REST endpoints** | ❌ Missing | Query functions exist in `src/db/clickhouse/query.py` but no routes wire them up |
 | **FastAPI WebSocket** | ❌ Missing | — |
 | **React Frontend** | ❌ Missing | — |
@@ -131,6 +131,16 @@ C:\project\data_collector\
 │   │   ├── auth.py             # BasicAuthBackend (ADMIN_USER/ADMIN_PASSWORD)
 │   │   ├── bond_views.py       # BondInstrumentAdmin (CRUD ModelView)
 │   │   └── clickhouse_views.py # BondOrderBookView + BondTradesView (custom BaseView)
+│   ├── collectors/
+│   │   ├── __init__.py
+│   │   └── bond/
+│   │       ├── __init__.py
+│   │       ├── models.py           # 3 dataclasses (BondSearchItem, BondInstrumentInfo, BestLimitEntry)
+│   │       ├── tsetmc_client.py    # Async HTTP client with retry + semaphore
+│   │       ├── transformer.py      # API → DB row mapping (CH + PG)
+│   │       ├── instrument_sync.py  # TSETMC → PostgreSQL instrument upsert
+│   │       ├── order_book_fetcher.py  # PG → TSETMC → ClickHouse order book backfill
+│   │       └── run_sync.py         # CLI script: sync instruments + backfill last 7 days
 │   ├── db/
 │   │   ├── __init__.py
 │   │   ├── config.py           # get_database_url() for PostgreSQL
@@ -149,7 +159,8 @@ C:\project\data_collector\
 │   │           └── versions/
 │   │               ├── 001_create_schema_migrations.py
 │   │               ├── 002_create_bond_order_book.py
-│   │               └── 003_create_bond_trades.py
+│   │               ├── 003_create_bond_trades.py
+│   │               └── 004_replacing_merge_tree.py
 │   └── tests/
 │       ├── conftest.py
 │       ├── test_clickhouse_client.py
@@ -157,14 +168,17 @@ C:\project\data_collector\
 │       ├── test_clickhouse_schema.py
 │       ├── test_clickhouse_query.py
 │       ├── test_models.py
-│       └── test_price_conversion.py
+│       ├── test_price_conversion.py
+│       ├── test_bond_models.py
+│       ├── test_bond_transformer.py
+│       ├── test_bond_tsetmc_client.py
+│       ├── test_bond_instrument_sync.py
+│       └── test_bond_order_book_fetcher.py
 └── explore-data-sources/
     ├── akhza_history.md        # TSETMC API research notes
     ├── akhza_history.py        # Working TSETMC bond data fetcher prototype
     ├── akhza_db_design.md      # v1 DB design
-    ├── akhza_db_design_v2.md   # v2 DB design (clean column names)
-    ├── tesetmc.py              # Placeholder (empty)
-    └── signalr.py              # Placeholder (empty)
+    └── akhza_db_design_v2.md   # v2 DB design (clean column names)
 ```
 
 ---
@@ -215,14 +229,14 @@ The **database layer** is the most complete part. ClickHouse migrations, Postgre
 - ORDER BY: `(instrument_code, trade_date, trade_time, depth_level)`
 - PARTITION BY: `toYYYYMM(trade_date)`
 - TTL: `ingested_at + INTERVAL 1 YEAR`
-- Engine: MergeTree
+- Engine: ReplacingMergeTree(ingested_at)
 - Columns: instrument_code, trade_date, trade_time, ref_id, depth_level, bid_price (Int64), bid_volume, bid_order_count, ask_price (Int64), ask_volume, ask_order_count, data_source, ingested_at
 
 **`bond_trades`** — Tick-level trade records
 - ORDER BY: `(instrument_code, trade_date, trade_time, trade_id)`
 - PARTITION BY: `toYYYYMM(trade_date)`
 - TTL: `ingested_at + INTERVAL 1 YEAR`
-- Engine: MergeTree
+- Engine: ReplacingMergeTree(ingested_at)
 - Columns: instrument_code, trade_date, trade_time, trade_id, price (Int64), volume, value, is_canceled, data_source, ingested_at
 
 Prices stored as **Int64** (integer rials) — converted via `price_to_storage()` / `price_from_storage()`.
