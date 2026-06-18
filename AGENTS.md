@@ -97,6 +97,7 @@ The goal is to collect tick-level data (price, volume, bid/ask) simultaneously f
 | **FastAPI skeleton** | ✅ Done | `GET /`, `GET /health`, SessionMiddleware, admin panel wired in |
 | **Admin Panel** | ✅ Done | SQLAdmin with `sqladmin[full]>=0.27`. 4 views: `BondInstrumentAdmin` (CRUD), `BondOrderBookView`, `BondTradesView`, `CeleryTasksView` (trigger sync/backfill). BasicAuth via `ADMIN_USER`/`ADMIN_PASSWORD`. Bound to `/admin`. |
 | **Manage CLI** | ✅ Done | `manage.py shell`, `manage.py bond-sync`, `manage.py clickhouse {migrate,downgrade,history,pending,check}` |
+| **Celery Tasks** | ✅ Done | 3 tasks in `src/tasks.py`: `sync_bond_instruments` (TSETMC→PG upsert), `fetch_yesterday_orderbook` (single-day CH backfill), `backfill_order_books_task` (date-range CH backfill with auto code discovery). Wired via `celery_app.py`. Admin panel triggers via `CeleryTasksView`. |
 | **TSETMC Bond Scraper** | ✅ Done | `src/collectors/bond/` — async client (semaphore+retry), instrument sync (PG upsert), order book backfill (CH insert). `explore-data-sources/akhza_history.py` — original prototype |
 | **TSETMC Stock Scraper** | ❌ Missing | — |
 | **SignalR Listener** | ❌ Missing | Placeholder files exist (empty) |
@@ -346,3 +347,88 @@ docker compose exec api alembic upgrade head
 
 - For syntax verification: python -c "import py_compile; py_compile.compile(...)"
 - For full linting: run only if pyproject.toml lists the tool as a dependency.
+
+---
+
+## Admin Panel Development
+
+All custom `BaseView` pages must use a manual `jinja2.Environment` + `_render()` helper (not `self.templates.TemplateResponse`). This gives explicit control over template inheritance and SQLAdmin globals.
+
+### Two Page Types
+
+| Type | Class | Use Case | Example |
+|------|-------|----------|---------|
+| **CRUD** | `ModelView` | CRUD on SQLModel entity. Auto-rendered. | `BondInstrumentAdmin` |
+| **Custom** | `BaseView` + `_render()` | Read-only views, task triggers. Extends `admin_base.html`. | `BondOrderBookView`, `CeleryTasksView` |
+
+### Template Rendering Pattern (copy exactly)
+
+```python
+_TEMPLATE_DIR = Path(__file__).parent / "templates"
+_SQLADMIN_TEMPLATE_DIR = Path(sqladmin.__file__).parent / "templates"
+_TEMPLATE_ENV = jinja2.Environment(
+    loader=jinja2.FileSystemLoader([str(_TEMPLATE_DIR), str(_SQLADMIN_TEMPLATE_DIR)]),
+    autoescape=True, auto_reload=False,
+)
+# 4 mandatory globals for sqladmin/layout.html:
+_TEMPLATE_ENV.globals.update(get_flashed_messages=get_flashed_messages, Secret=Secret, min=min, zip=zip)
+
+def _render(name: str, ctx: dict[str, Any]) -> str:
+    return _TEMPLATE_ENV.get_template(name).render(ctx)
+
+class MyView(BaseView):
+    name = "My View"; identity = "my-view"; icon = "fa-solid fa-star"
+
+    @expose("/my-view", methods=["GET"])
+    async def handler(self, request: Request) -> HTMLResponse:
+        ctx: dict[str, Any] = {
+            "request": request, "admin": self._admin_ref,  # NOT self.admin
+            "url_for": lambda n, **kw: request.url_for(n, **kw),
+            "title": "...", "subtitle": "...",  # + your data
+        }
+        return HTMLResponse(_render("my_template.html", ctx))
+```
+
+### Mandatory Context Keys
+
+| Key | Value | Purpose |
+|-----|-------|---------|
+| `request` | `request` | Required by `layout.html` for state/urls |
+| `admin` | **`self._admin_ref`** | NOT `self.admin`. ClassVar set at registration. |
+| `url_for` | lambda wrapping `request.url_for` | Static files + "Back to Dashboard" link |
+| `title` | str | Page header |
+| `subtitle` | str | Below title |
+
+### Template Inheritance
+
+```
+sqladmin/base.html → sqladmin/layout.html → admin_base.html (adds Back link + blocks)
+    → your_template.html
+```
+
+Blocks in `admin_base.html`: `title`, `custom_styles`, `content`, `custom_js`.
+
+Template has access to: `{{ url_for('admin:index') }}`, `{{ url_for('admin:statics', path='...') }}`, `{{ admin.title }}`, `{{ request }}`.
+
+### How to Add
+
+1. Create `BaseView` subclass with `@expose("/path")` in `src/admin/`
+2. Create Jinja2 template in `src/admin/templates/` extending `admin_base.html`
+3. Register in `src/admin/__init__.py`
+4. Verify: `docker compose restart api` → `curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/admin/my-view --user admin:admin` (expect 200)
+
+### File Structure
+
+```
+src/admin/
+├── __init__.py           # Register all views
+├── auth.py               # BasicAuthBackend
+├── bond_views.py         # ModelView (CRUD)
+├── clickhouse_views.py   # BondOrderBookView + BondTradesView (BaseView)
+├── task_views.py         # CeleryTasksView (BaseView)
+└── templates/
+    ├── admin_base.html
+    ├── order_book_list.html
+    ├── trades_list.html
+    └── admin_tasks.html
+```

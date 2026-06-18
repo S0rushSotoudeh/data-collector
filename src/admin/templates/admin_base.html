@@ -1,0 +1,27 @@
+{% extends "sqladmin/layout.html" %}
+{% block head %}
+<title>{% block title %}{{ title }} - {{ admin.title }}{% endblock %}</title>
+{% endblock %}
+{% block content_header %}
+<div class="row align-items-center mb-2">
+  <div class="col">
+    <a href="{{ url_for('admin:index') }}" class="btn btn-ghost-secondary btn-sm">
+      <i class="ti ti-arrow-back"></i> Back to Dashboard
+    </a>
+  </div>
+</div>
+<div class="row align-items-center">
+  <div class="col">
+    <h2 class="page-title">{{ title }}</h2>
+    <div class="page-pretitle">{{ subtitle }}</div>
+  </div>
+</div>
+{% endblock %}
+{% block head_css %}
+{{ super() }}
+{% block custom_styles %}{% endblock %}
+{% endblock %}
+{% block tail_js %}
+{{ super() }}
+{% block custom_js %}{% endblock %}
+{% endblock %}

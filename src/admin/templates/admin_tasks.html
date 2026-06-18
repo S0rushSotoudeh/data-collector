@@ -1,0 +1,64 @@
+{% extends "admin_base.html" %}
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="alert alert-{{ msg.type }}">{{ msg.text | safe }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="alert alert-info">Tasks run asynchronously on the Celery worker. Submit a task below, then use the status checker to see the result.</div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Sync Instruments</h3></div>
+  <div class="card-body">
+    <p>Fetch bond instrument metadata from TSETMC and upsert into PostgreSQL.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="sync-instruments">
+      <button type="submit" class="btn btn-primary">Sync Instruments</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Order Books</h3></div>
+  <div class="card-body">
+    <p>Fetch historical order book snapshots from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Order Books</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Task Status</h3></div>
+  <div class="card-body">
+    <p>Check the status and result of a submitted task.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="check-status">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="text" class="form-control" name="task_id" placeholder="Task ID" required style="width:300px" value="{{ task_id or '' }}">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-info">Check Status</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

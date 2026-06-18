@@ -5,7 +5,10 @@ from urllib.parse import urlencode
 from typing import Any
 
 import jinja2
+import sqladmin
 from sqladmin import BaseView, expose
+from sqladmin.flash import get_flashed_messages
+from sqladmin.secret import Secret
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
@@ -20,11 +23,16 @@ from src.db.clickhouse.query import (
 _PAGE_SIZE = 100
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
+_SQLADMIN_TEMPLATE_DIR = Path(sqladmin.__file__).parent / "templates"
 _TEMPLATE_ENV = jinja2.Environment(
-    loader=jinja2.FileSystemLoader(str(_TEMPLATE_DIR)),
+    loader=jinja2.FileSystemLoader([str(_TEMPLATE_DIR), str(_SQLADMIN_TEMPLATE_DIR)]),
     autoescape=True,
     auto_reload=False,
 )
+_TEMPLATE_ENV.globals["get_flashed_messages"] = get_flashed_messages
+_TEMPLATE_ENV.globals["Secret"] = Secret
+_TEMPLATE_ENV.globals["min"] = min
+_TEMPLATE_ENV.globals["zip"] = zip
 
 
 def _render(name: str, ctx: dict[str, Any]) -> str:
@@ -103,6 +111,7 @@ class BondOrderBookView(BaseView):
 
         ctx: dict[str, Any] = {
             "request": request,
+            "admin": self._admin_ref,
             "title": "Bond Order Book",
             "subtitle": "Browse and filter order book snapshots",
             "rows": rows,
@@ -179,6 +188,7 @@ class BondTradesView(BaseView):
         total_pages = max(1, ceil(total / _PAGE_SIZE))
         ctx: dict[str, Any] = {
             "request": request,
+            "admin": self._admin_ref,
             "title": "Bond Trades",
             "subtitle": "Browse and filter trade records",
             "rows": rows,

@@ -1,44 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/tabler.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/tabler-icons.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/fontawesome.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/select2.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/flatpickr.min.css') }}">
-  <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/main.css') }}">
-  <style>
-    .filter-card { margin-bottom: 1.5rem; }
-    .filter-card .card-body { padding: 1rem 1.5rem; }
-    .table th { white-space: nowrap; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; }
-    .table td { font-size: .8125rem; vertical-align: middle; }
-    .table td.mono { font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; text-align: right; }
-    .pagination-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; padding: .75rem 0; }
-    .pagination-bar .info { font-size: .875rem; color: var(--tblr-muted); }
-    .wrapper { display: flex; }
-    .page-wrapper { flex: 1; min-width: 0; }
-  </style>
-  <title>Bond Order Book - Data Collector Admin</title>
-</head>
-<body>
-<div class="wrapper">
-  <div class="page-wrapper">
-    <div class="container-fluid">
-      <div class="page-header d-print-none mt-3 mb-3">
-        <div class="row align-items-center">
-          <div class="col">
-            <h2 class="page-title">{{ title }}</h2>
-            <div class="page-pretitle">{{ subtitle }}</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="page-body flex-grow-1">
-      <div class="container-fluid">
-        <div class="row row-deck row-cards">
-
+{% extends "admin_base.html" %}
+{% block custom_styles %}
+<style>
+  .filter-card { margin-bottom: 1.5rem; }
+  .filter-card .card-body { padding: 1rem 1.5rem; }
+  .table th { white-space: nowrap; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; }
+  .table td { font-size: .8125rem; vertical-align: middle; }
+  .table td.mono { font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace; text-align: right; }
+  .pagination-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .5rem; padding: .75rem 0; }
+  .pagination-bar .info { font-size: .875rem; color: var(--tblr-muted); }
+</style>
+{% endblock %}
+{% block content %}
 <div class="card filter-card">
   <div class="card-header">
     <h3 class="card-title">Filters</h3>
@@ -167,13 +139,4 @@
   </div>
   {% endif %}
 </div>
-
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-<script src="{{ url_for('admin:statics', path='js/jquery.min.js') }}"></script>
-<script src="{{ url_for('admin:statics', path='js/tabler.min.js') }}"></script>
-</body>
-</html>
+{% endblock %}
