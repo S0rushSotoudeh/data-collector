@@ -1,55 +1,34 @@
-import html
 from datetime import date
+from math import ceil
+from pathlib import Path
+from urllib.parse import urlencode
 from typing import Any
 
+import jinja2
 from sqladmin import BaseView, expose
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
-from src.db.clickhouse import get_async_client
+from src.db.clickhouse import price_to_storage
 from src.db.clickhouse.query import (
-    get_latest_order_book,
-    get_latest_order_books,
-    get_latest_trades,
-    get_trade_history,
+    get_order_book_paginated,
+    count_order_book,
+    get_trades_paginated,
+    count_trades,
 )
-from src.db.clickhouse.schema import ORDER_BOOK_COLUMNS, TRADES_COLUMNS
 
-_OB_HEADERS = [c for c in ORDER_BOOK_COLUMNS if c != "ingested_at"]
-_TR_HEADERS = [c for c in TRADES_COLUMNS if c != "ingested_at"]
+_PAGE_SIZE = 100
 
-_OB_ROW_TPL = "<td>{" + "}</td><td>{".join(_OB_HEADERS) + "}</td>"
-_TR_ROW_TPL = "<td>{" + "}</td><td>{".join(_TR_HEADERS) + "}</td>"
-
-_MAX_LIMIT = 5000
-
-
-def _page(title: str, body: str) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>{title}</title></head>
-<body><div class="container-fluid">{body}</div></body>
-</html>"""
+_TEMPLATE_DIR = Path(__file__).parent / "templates"
+_TEMPLATE_ENV = jinja2.Environment(
+    loader=jinja2.FileSystemLoader(str(_TEMPLATE_DIR)),
+    autoescape=True,
+    auto_reload=False,
+)
 
 
-def _table(headers: list[str], rows: list[dict[str, Any]], row_tpl: str) -> str:
-    h = "".join(f"<th>{c}</th>" for c in headers)
-    r = "".join(f"<tr>{row_tpl.format(**row)}</tr>" for row in rows)
-    return f"<table class='table table-striped table-hover'><thead><tr>{h}</tr></thead><tbody>{r}</tbody></table>"
-
-
-def _parse_limit(raw: str | None, default: int = 10) -> int:
-    if raw is None:
-        return default
-    try:
-        val = int(raw)
-        if val < 1:
-            return default
-        if val > _MAX_LIMIT:
-            return _MAX_LIMIT
-        return val
-    except (ValueError, TypeError):
-        return default
+def _render(name: str, ctx: dict[str, Any]) -> str:
+    return _TEMPLATE_ENV.get_template(name).render(ctx)
 
 
 def _parse_date(raw: str | None) -> date | None:
@@ -61,23 +40,22 @@ def _parse_date(raw: str | None) -> date | None:
         return None
 
 
-def _search_form(
-    action: str,
-    instrument_code: str,
-    trade_date_str: str,
+def _parse_int(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return None
+
+
+def _qs_page(
+    params: dict[str, str],
+    page: int,
 ) -> str:
-    safe_code = html.escape(instrument_code)
-    safe_date = html.escape(trade_date_str)
-    return f"""<form method="get" action="{html.escape(action)}" class="mb-3">
-<div class="row g-2">
-<div class="col-auto"><input type="text" class="form-control" name="instrument_code" placeholder="Instrument Code" value="{safe_code}"></div>
-<div class="col-auto"><input type="date" class="form-control" name="trade_date" value="{safe_date}"></div>
-<div class="col-auto"><button type="submit" class="btn btn-primary">Search</button></div>
-</div></form>"""
-
-
-def _danger(text: str) -> str:
-    return f'<div class="alert alert-danger">{html.escape(text)}</div>'
+    qs = dict(params)
+    qs["page"] = str(page)
+    return urlencode(qs)
 
 
 class BondOrderBookView(BaseView):
@@ -86,48 +64,60 @@ class BondOrderBookView(BaseView):
     icon = "fa-solid fa-book"
 
     @expose("/order-book", methods=["GET"])
-    async def order_book(self, request: Request) -> HTMLResponse:
-        error = None
-        rows = []
-        instrument_code = request.query_params.get("instrument_code", "")
-        trade_date_str = request.query_params.get("trade_date", "")
-        dt = _parse_date(trade_date_str)
+    async def order_book_list(self, request: Request) -> HTMLResponse:
+        qp = dict(request.query_params)
 
-        if instrument_code and dt:
-            try:
-                rows = await get_latest_order_book(instrument_code, dt)
-            except Exception as e:
-                error = str(e)
-        elif instrument_code and not dt:
-            error = "Invalid trade_date"
-        elif not instrument_code:
-            error = "instrument_code + trade_date required"
-
-        body = "<h1>Bond Order Book</h1>"
-        if error:
-            body += _danger(error)
-        body += _search_form("/admin/order-book", instrument_code, trade_date_str)
-        if rows:
-            body += _table(_OB_HEADERS, rows, _OB_ROW_TPL)
-        body += '<br><a href="/admin/order-book/latest" class="btn btn-secondary">Latest Snapshots</a>'
-        return HTMLResponse(_page("Bond Order Book", body))
-
-    @expose("/order-book/latest", methods=["GET"])
-    async def order_book_latest(self, request: Request) -> HTMLResponse:
-        error = None
-        rows = []
-        limit = _parse_limit(request.query_params.get("limit"), 10)
+        instrument_code = qp.get("instrument_code", "") or None
+        trade_date_str = qp.get("trade_date", "") or None
+        trade_date = _parse_date(trade_date_str)
+        depth_level = _parse_int(qp.get("depth_level")) if qp.get("depth_level") else None
+        data_source = qp.get("data_source", "") or None
+        page_raw = qp.get("page", "1")
+        page = 1
         try:
-            rows = await get_latest_order_books(limit=limit)
-        except Exception as e:
-            error = str(e)
+            page = max(1, int(page_raw))
+        except (ValueError, TypeError):
+            page = 1
 
-        body = "<h1>Latest Order Book Snapshots</h1>"
-        if error:
-            body += _danger(error)
-        if rows:
-            body += _table(_OB_HEADERS, rows, _OB_ROW_TPL)
-        return HTMLResponse(_page("Latest Order Book", body))
+        offset = (page - 1) * _PAGE_SIZE
+
+        try:
+            total = await count_order_book(
+                instrument_code=instrument_code,
+                trade_date=trade_date,
+                depth_level=depth_level,
+                data_source=data_source,
+            )
+            rows = await get_order_book_paginated(
+                instrument_code=instrument_code,
+                trade_date=trade_date,
+                depth_level=depth_level,
+                data_source=data_source,
+                offset=offset,
+                limit=_PAGE_SIZE,
+            )
+        except Exception as e:
+            return HTMLResponse(f"<html><body><h2>Error</h2><p>{e}</p></body></html>", status_code=500)
+
+        total_pages = max(1, ceil(total / _PAGE_SIZE))
+
+        ctx: dict[str, Any] = {
+            "request": request,
+            "title": "Bond Order Book",
+            "subtitle": "Browse and filter order book snapshots",
+            "rows": rows,
+            "total": total,
+            "page": page,
+            "page_size": _PAGE_SIZE,
+            "total_pages": total_pages,
+            "instrument_code": instrument_code or "",
+            "trade_date": trade_date_str or "",
+            "depth_level": depth_level,
+            "data_source": data_source or "",
+            "qs_page": lambda p: _qs_page(qp, p),
+        }
+        ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
+        return HTMLResponse(_render("order_book_list.html", ctx))
 
 
 class BondTradesView(BaseView):
@@ -136,46 +126,73 @@ class BondTradesView(BaseView):
     icon = "fa-solid fa-chart-line"
 
     @expose("/trades", methods=["GET"])
-    async def trades(self, request: Request) -> HTMLResponse:
-        error = None
-        rows = []
-        instrument_code = request.query_params.get("instrument_code", "")
-        trade_date_str = request.query_params.get("trade_date", "")
-        limit = _parse_limit(request.query_params.get("limit"), 500)
-        dt = _parse_date(trade_date_str)
+    async def trades_list(self, request: Request) -> HTMLResponse:
+        qp = dict(request.query_params)
 
-        if instrument_code and dt:
-            try:
-                rows = await get_trade_history(instrument_code, dt, limit=limit)
-            except Exception as e:
-                error = str(e)
-        elif instrument_code and not dt:
-            error = "Invalid trade_date"
-        elif not instrument_code:
-            error = "instrument_code + trade_date required"
-
-        body = "<h1>Bond Trades</h1>"
-        if error:
-            body += _danger(error)
-        body += _search_form("/admin/trades", instrument_code, trade_date_str)
-        if rows:
-            body += _table(_TR_HEADERS, rows, _TR_ROW_TPL)
-        body += '<br><a href="/admin/trades/latest" class="btn btn-secondary">Latest Trades</a>'
-        return HTMLResponse(_page("Bond Trades", body))
-
-    @expose("/trades/latest", methods=["GET"])
-    async def trades_latest(self, request: Request) -> HTMLResponse:
-        error = None
-        rows = []
-        limit = _parse_limit(request.query_params.get("limit"), 10)
+        instrument_code = qp.get("instrument_code", "") or None
+        trade_date_str = qp.get("trade_date", "") or None
+        trade_date = _parse_date(trade_date_str)
+        data_source = qp.get("data_source", "") or None
+        page_raw = qp.get("page", "1")
+        page = 1
         try:
-            rows = await get_latest_trades(limit=limit)
-        except Exception as e:
-            error = str(e)
+            page = max(1, int(page_raw))
+        except (ValueError, TypeError):
+            page = 1
 
-        body = "<h1>Latest Trades</h1>"
-        if error:
-            body += _danger(error)
-        if rows:
-            body += _table(_TR_HEADERS, rows, _TR_ROW_TPL)
-        return HTMLResponse(_page("Latest Trades", body))
+        min_price_raw = qp.get("min_price") or None
+        max_price_raw = qp.get("max_price") or None
+        min_price = None
+        max_price = None
+        if min_price_raw is not None:
+            min_price = price_to_storage(min_price_raw)
+        if max_price_raw is not None:
+            max_price = price_to_storage(max_price_raw)
+
+        is_canceled_raw = qp.get("is_canceled") or None
+        is_canceled = _parse_int(is_canceled_raw)
+
+        offset = (page - 1) * _PAGE_SIZE
+
+        try:
+            total = await count_trades(
+                instrument_code=instrument_code,
+                trade_date=trade_date,
+                min_price=min_price,
+                max_price=max_price,
+                is_canceled=is_canceled,
+                data_source=data_source,
+            )
+            rows = await get_trades_paginated(
+                instrument_code=instrument_code,
+                trade_date=trade_date,
+                min_price=min_price,
+                max_price=max_price,
+                is_canceled=is_canceled,
+                data_source=data_source,
+                offset=offset,
+                limit=_PAGE_SIZE,
+            )
+        except Exception as e:
+            return HTMLResponse(f"<html><body><h2>Error</h2><p>{e}</p></body></html>", status_code=500)
+
+        total_pages = max(1, ceil(total / _PAGE_SIZE))
+        ctx: dict[str, Any] = {
+            "request": request,
+            "title": "Bond Trades",
+            "subtitle": "Browse and filter trade records",
+            "rows": rows,
+            "total": total,
+            "page": page,
+            "page_size": _PAGE_SIZE,
+            "total_pages": total_pages,
+            "instrument_code": instrument_code or "",
+            "trade_date": trade_date_str or "",
+            "data_source": data_source or "",
+            "min_price": qp.get("min_price", ""),
+            "max_price": qp.get("max_price", ""),
+            "is_canceled": _parse_int(is_canceled_raw),
+            "qs_page": lambda p: _qs_page(qp, p),
+        }
+        ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
+        return HTMLResponse(_render("trades_list.html", ctx))

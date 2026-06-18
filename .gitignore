@@ -4,3 +4,4 @@ __pycache__/
 collector_venv
 .kilo/
 .env
+cookies*.txt
