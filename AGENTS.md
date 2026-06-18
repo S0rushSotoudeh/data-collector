@@ -127,10 +127,11 @@ C:\project\data_collector\
 ├── src/
 │   ├── main.py                 # FastAPI app (admin panel wired in)
 │   ├── admin/
-│   │   ├── __init__.py         # SQLAdmin setup, 3 views registered
+│   │   ├── __init__.py         # SQLAdmin setup, 4 views registered
 │   │   ├── auth.py             # BasicAuthBackend (ADMIN_USER/ADMIN_PASSWORD)
 │   │   ├── bond_views.py       # BondInstrumentAdmin (CRUD ModelView)
-│   │   └── clickhouse_views.py # BondOrderBookView + BondTradesView (custom BaseView)
+│   │   ├── clickhouse_views.py # BondOrderBookView + BondTradesView (custom BaseView)
+│   │   └── task_views.py       # CeleryTasksView (trigger sync/backfill)
 │   ├── collectors/
 │   │   ├── __init__.py
 │   │   └── bond/
