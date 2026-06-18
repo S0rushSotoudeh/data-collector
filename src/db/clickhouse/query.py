@@ -1,4 +1,3 @@
-import asyncio
 from datetime import date
 from typing import Any
 
@@ -168,6 +167,166 @@ async def get_latest_trades(
     )
     rows = (await client.query(q, parameters={"lim": limit})).result_rows
     return [_row_to_dict_tr(r) for r in rows]
+
+
+async def get_order_book_paginated(
+    instrument_code: str | None = None,
+    trade_date: date | None = None,
+    depth_level: int | None = None,
+    data_source: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if instrument_code:
+        where_clauses.append("instrument_code = {code:String}")
+        params["code"] = instrument_code
+    if trade_date:
+        where_clauses.append("trade_date = {dt:Date}")
+        params["dt"] = trade_date
+    if depth_level is not None:
+        where_clauses.append("depth_level = {dl:UInt8}")
+        params["dl"] = depth_level
+    if data_source:
+        where_clauses.append("data_source = {ds:String}")
+        params["ds"] = data_source
+
+    where = ""
+    if where_clauses:
+        where = "WHERE " + " AND ".join(where_clauses)
+
+    q = (
+        f"SELECT * FROM `{ORDER_BOOK_TABLE}` FINAL {where} "
+        f"ORDER BY trade_date DESC, trade_time DESC, depth_level ASC "
+        f"LIMIT {{lim:UInt32}} OFFSET {{off:UInt32}}"
+    )
+    params["lim"] = limit
+    params["off"] = offset
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_ob(r) for r in rows]
+
+
+async def count_order_book(
+    instrument_code: str | None = None,
+    trade_date: date | None = None,
+    depth_level: int | None = None,
+    data_source: str | None = None,
+) -> int:
+    client = await get_async_client()
+    where_clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if instrument_code:
+        where_clauses.append("instrument_code = {code:String}")
+        params["code"] = instrument_code
+    if trade_date:
+        where_clauses.append("trade_date = {dt:Date}")
+        params["dt"] = trade_date
+    if depth_level is not None:
+        where_clauses.append("depth_level = {dl:UInt8}")
+        params["dl"] = depth_level
+    if data_source:
+        where_clauses.append("data_source = {ds:String}")
+        params["ds"] = data_source
+
+    where = ""
+    if where_clauses:
+        where = "WHERE " + " AND ".join(where_clauses)
+
+    q = f"SELECT count() FROM `{ORDER_BOOK_TABLE}` FINAL {where}"
+    rows = (await client.query(q, parameters=params)).result_rows
+    return int(rows[0][0]) if rows else 0
+
+
+async def get_trades_paginated(
+    instrument_code: str | None = None,
+    trade_date: date | None = None,
+    min_price: int | None = None,
+    max_price: int | None = None,
+    is_canceled: int | None = None,
+    data_source: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if instrument_code:
+        where_clauses.append("instrument_code = {code:String}")
+        params["code"] = instrument_code
+    if trade_date:
+        where_clauses.append("trade_date = {dt:Date}")
+        params["dt"] = trade_date
+    if min_price is not None:
+        where_clauses.append("price >= {minp:Int64}")
+        params["minp"] = min_price
+    if max_price is not None:
+        where_clauses.append("price <= {maxp:Int64}")
+        params["maxp"] = max_price
+    if is_canceled is not None:
+        where_clauses.append("is_canceled = {ic:UInt8}")
+        params["ic"] = is_canceled
+    if data_source:
+        where_clauses.append("data_source = {ds:String}")
+        params["ds"] = data_source
+
+    where = ""
+    if where_clauses:
+        where = "WHERE " + " AND ".join(where_clauses)
+
+    q = (
+        f"SELECT * FROM `{TRADES_TABLE}` FINAL {where} "
+        f"ORDER BY trade_date DESC, trade_time DESC "
+        f"LIMIT {{lim:UInt32}} OFFSET {{off:UInt32}}"
+    )
+    params["lim"] = limit
+    params["off"] = offset
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_tr(r) for r in rows]
+
+
+async def count_trades(
+    instrument_code: str | None = None,
+    trade_date: date | None = None,
+    min_price: int | None = None,
+    max_price: int | None = None,
+    is_canceled: int | None = None,
+    data_source: str | None = None,
+) -> int:
+    client = await get_async_client()
+    where_clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if instrument_code:
+        where_clauses.append("instrument_code = {code:String}")
+        params["code"] = instrument_code
+    if trade_date:
+        where_clauses.append("trade_date = {dt:Date}")
+        params["dt"] = trade_date
+    if min_price is not None:
+        where_clauses.append("price >= {minp:Int64}")
+        params["minp"] = min_price
+    if max_price is not None:
+        where_clauses.append("price <= {maxp:Int64}")
+        params["maxp"] = max_price
+    if is_canceled is not None:
+        where_clauses.append("is_canceled = {ic:UInt8}")
+        params["ic"] = is_canceled
+    if data_source:
+        where_clauses.append("data_source = {ds:String}")
+        params["ds"] = data_source
+
+    where = ""
+    if where_clauses:
+        where = "WHERE " + " AND ".join(where_clauses)
+
+    q = f"SELECT count() FROM `{TRADES_TABLE}` FINAL {where}"
+    rows = (await client.query(q, parameters=params)).result_rows
+    return int(rows[0][0]) if rows else 0
 
 
 def _row_to_dict_ob(row: tuple[Any, ...]) -> dict[str, Any]:
