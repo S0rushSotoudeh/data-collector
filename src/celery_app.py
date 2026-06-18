@@ -7,12 +7,13 @@ _redis_url = f"redis://{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT
 celery = Celery(
     "data_collector",
     broker=_redis_url,
+    backend=_redis_url,
 )
 
 celery.conf.update(
-    task_serializer="pickle",
-    accept_content=["pickle", "json"],
-    result_serializer="pickle",
+    task_serializer="json",
+    accept_content=["json"],
+    result_serializer="json",
     result_backend=_redis_url,
     timezone="Asia/Tehran",
     enable_utc=True,

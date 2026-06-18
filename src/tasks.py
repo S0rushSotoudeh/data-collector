@@ -10,12 +10,12 @@ from src.collectors.bond.order_book_fetcher import (
 )
 
 
-@shared_task(serializer="pickle")
+@shared_task
 def sync_bond_instruments() -> dict:
     return asyncio.run(sync_instruments_to_pg())
 
 
-@shared_task(serializer="pickle")
+@shared_task
 def fetch_yesterday_orderbook() -> dict:
     yesterday = date.today() - timedelta(days=1)
     return asyncio.run(
@@ -23,7 +23,7 @@ def fetch_yesterday_orderbook() -> dict:
     )
 
 
-@shared_task(serializer="pickle")
+@shared_task
 def backfill_order_books_task(start_date_str: str, end_date_str: str) -> dict:
     start = date.fromisoformat(start_date_str)
     end = date.fromisoformat(end_date_str)
