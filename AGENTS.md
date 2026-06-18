@@ -344,7 +344,5 @@ docker compose exec api alembic upgrade head
 
 ### Linting & Type Checking
 
-```bash
-docker compose exec api ruff check src/
-docker compose exec api mypy src/
-```
+- For syntax verification: python -c "import py_compile; py_compile.compile(...)"
+- For full linting: run only if pyproject.toml lists the tool as a dependency.

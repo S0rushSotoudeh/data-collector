@@ -1,13 +1,14 @@
 from datetime import date
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from starlette.requests import Request
 
-from src.collectors.bond.instrument_sync import sync_instruments_to_pg
-from src.collectors.bond.order_book_fetcher import (
-    get_instrument_codes_active_in_range,
-    backfill_order_books as backfill_for_range,
+from src.celery_app import celery
+from src.tasks import (
+    backfill_order_books_task,
+    sync_bond_instruments,
 )
 
 router = APIRouter(prefix="/admin/tasks", tags=["admin-tasks"])
@@ -22,9 +23,16 @@ async def _require_admin(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
 
-class SyncInstrumentsResponse(BaseModel):
-    synced: int
-    errors: list[str]
+class TaskSubmittedResponse(BaseModel):
+    task_id: str
+    status: str
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    result: dict | None = None
+    error: str | None = None
 
 
 class BackfillRequest(BaseModel):
@@ -32,43 +40,30 @@ class BackfillRequest(BaseModel):
     end_date: date = Field(..., description="End date (YYYY-MM-DD)")
 
 
-class BackfillResponse(BaseModel):
-    total_days_tried: int
-    total_rows: int
-    errors: list[str]
-    instrument_count: int
-
-
-@router.post("/sync-instruments", response_model=SyncInstrumentsResponse)
+@router.post("/sync-instruments", response_model=TaskSubmittedResponse)
 async def api_sync_instruments(request: Request):
     await _require_admin(request)
-    try:
-        result = await sync_instruments_to_pg()
-        return SyncInstrumentsResponse(
-            synced=result["synced"],
-            errors=[str(e) for e in result["errors"]],
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    task = sync_bond_instruments.delay()
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
 
 
-@router.post("/backfill-order-books", response_model=BackfillResponse)
+@router.post("/backfill-order-books", response_model=TaskSubmittedResponse)
 async def api_backfill_order_books(request: Request, body: BackfillRequest):
     await _require_admin(request)
-    try:
-        codes = await get_instrument_codes_active_in_range(
-            body.start_date, body.end_date
-        )
-        result = await backfill_for_range(
-            start_date=body.start_date,
-            end_date=body.end_date,
-            instrument_codes=codes,
-        )
-        return BackfillResponse(
-            total_days_tried=result["total_days_tried"],
-            total_rows=result["total_rows"],
-            errors=[str(e) for e in result["errors"]],
-            instrument_count=len(codes),
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    task = backfill_order_books_task.delay(
+        start_date_str=body.start_date.isoformat(),
+        end_date_str=body.end_date.isoformat(),
+    )
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.get("/status/{task_id}", response_model=TaskStatusResponse)
+async def api_task_status(request: Request, task_id: str):
+    await _require_admin(request)
+    async_result: AsyncResult = AsyncResult(task_id, app=celery)
+    resp = TaskStatusResponse(task_id=task_id, status=async_result.status)
+    if async_result.successful():
+        resp.result = async_result.result
+    elif async_result.failed():
+        resp.error = str(async_result.result)
+    return resp

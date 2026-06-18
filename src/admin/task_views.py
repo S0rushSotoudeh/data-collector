@@ -1,14 +1,14 @@
 import html
-from datetime import date
 
+from celery.result import AsyncResult
 from sqladmin import BaseView, expose
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import HTMLResponse
 
-from src.collectors.bond.instrument_sync import sync_instruments_to_pg
-from src.collectors.bond.order_book_fetcher import (
-    backfill_order_books,
-    get_instrument_codes_active_in_range,
+from src.celery_app import celery
+from src.tasks import (
+    backfill_order_books_task,
+    sync_bond_instruments,
 )
 
 
@@ -44,6 +44,15 @@ def _backfill_form(start_date: str, end_date: str) -> str:
 </div></form>"""
 
 
+def _task_status_form() -> str:
+    return """<form method="post" action="/admin/celery-tasks" class="mb-3">
+<input type="hidden" name="action" value="check-status">
+<div class="row g-2 mb-2">
+<div class="col-auto"><input type="text" class="form-control" name="task_id" placeholder="Task ID" required style="width:300px"></div>
+<div class="col-auto"><button type="submit" class="btn btn-info">Check Status</button></div>
+</div></form>"""
+
+
 class CeleryTasksView(BaseView):
     name = "Tasks"
     identity = "celery-tasks"
@@ -58,59 +67,42 @@ class CeleryTasksView(BaseView):
             action = form.get("action")
 
             if action == "sync-instruments":
-                try:
-                    result = await sync_instruments_to_pg()
-                    msg = f"Synced {result['synced']} instruments"
-                    if result["errors"]:
-                        msg += f" with {len(result['errors'])} error(s)"
-                        for e in result["errors"]:
-                            msg += f"<br>&nbsp;&nbsp;{html.escape(str(e))}"
-                        body += _danger(msg)
-                    else:
-                        body += _success(msg)
-                except Exception as e:
-                    body += _danger(f"Sync failed: {e}")
+                task = sync_bond_instruments.delay()
+                body += _success(f"Task submitted: <code>{html.escape(task.id)}</code> (status: {task.status})")
 
             elif action == "backfill":
                 start_date_str = form.get("start_date", "")
                 end_date_str = form.get("end_date", "")
-                try:
-                    start_date = date.fromisoformat(start_date_str)
-                    end_date = date.fromisoformat(end_date_str)
-                except (ValueError, TypeError):
-                    body += _danger("Invalid date format")
-                    body += _backfill_form(start_date_str, end_date_str)
-                    return HTMLResponse(_page("Admin Tasks", body))
+                task = backfill_order_books_task.delay(
+                    start_date_str=start_date_str,
+                    end_date_str=end_date_str,
+                )
+                body += _success(f"Task submitted: <code>{html.escape(task.id)}</code> (status: {task.status})")
 
-                try:
-                    codes = await get_instrument_codes_active_in_range(
-                        start_date, end_date
-                    )
-                    result = await backfill_order_books(
-                        start_date=start_date,
-                        end_date=end_date,
-                        instrument_codes=codes,
-                    )
-                    msg = (
-                        f"Backfill complete: {result['total_days_tried']} day(s), "
-                        f"{result['total_rows']} rows, "
-                        f"{len(codes)} instrument(s)"
-                    )
-                    if result["errors"]:
-                        for e in result["errors"]:
-                            msg += f"<br>&nbsp;&nbsp;{html.escape(str(e))}"
-                        body += _danger(msg)
+            elif action == "check-status":
+                task_id = form.get("task_id", "")
+                if not task_id:
+                    body += _danger("No task ID provided")
+                else:
+                    async_result = AsyncResult(task_id, app=celery)
+                    state = async_result.status
+                    if async_result.successful():
+                        result = async_result.result
+                        if isinstance(result, dict):
+                            parts = [f"{k}={v}" for k, v in result.items()]
+                            body += _success(f"Task <code>{html.escape(task_id)}</code>: {state}<br>{'<br>'.join(parts)}")
+                        else:
+                            body += _success(f"Task <code>{html.escape(task_id)}</code>: {state}<br>{html.escape(str(result))}")
+                    elif async_result.failed():
+                        body += _danger(f"Task <code>{html.escape(task_id)}</code>: {state}<br>{html.escape(str(async_result.result))}")
                     else:
-                        body += _success(msg)
-                except Exception as e:
-                    body += _danger(f"Backfill failed: {e}")
-
+                        body += _info(f"Task <code>{html.escape(task_id)}</code>: {state}")
             else:
                 body += _danger(f"Unknown action: {html.escape(str(action))}")
 
-        body += _info("Trigger background tasks manually. Tasks run synchronously in this request.")
-        body += """<hr><h3>Sync Instruments</h3>
-<p>Fetch bond instrument metadata from TSETMC and upsert into PostgreSQL.</p>
+        body += _info("Tasks run asynchronously on the Celery worker. Submit a task above, then use the status checker below to see the result.")
+        body += "<hr><h3>Sync Instruments</h3>"
+        body += """<p>Fetch bond instrument metadata from TSETMC and upsert into PostgreSQL.</p>
 <form method="post" action="/admin/celery-tasks" class="mb-4">
 <input type="hidden" name="action" value="sync-instruments">
 <button type="submit" class="btn btn-primary">Sync Instruments</button>
@@ -119,5 +111,9 @@ class CeleryTasksView(BaseView):
         body += "<hr><h3>Backfill Order Books</h3>"
         body += "<p>Fetch historical order book snapshots from TSETMC for the given date range.</p>"
         body += _backfill_form("", "")
+
+        body += "<hr><h3>Task Status</h3>"
+        body += "<p>Check the status and result of a submitted task.</p>"
+        body += _task_status_form()
 
         return HTMLResponse(_page("Admin Tasks", body))
