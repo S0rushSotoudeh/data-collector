@@ -26,10 +26,11 @@ RUN useradd --create-home appuser
 COPY --chown=appuser:appuser alembic/ /app/alembic/
 COPY --chown=appuser:appuser alembic.ini /app/
 COPY --chown=appuser:appuser entrypoint.sh /app/
+COPY --chown=appuser:appuser entrypoint-celery.sh /app/
 COPY --chown=appuser:appuser src/ /app/src/
 COPY --chown=appuser:appuser manage.py /app/
 
-RUN chmod +x /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh /app/entrypoint-celery.sh
 
 USER appuser
 

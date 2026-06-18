@@ -1,3 +1,4 @@
+import asyncio
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,6 +17,20 @@ async def get_active_instrument_codes() -> list[str]:
     with SessionLocal() as session:
         stmt = select(BondInstrument.instrument_code).where(
             BondInstrument.status == "active"
+        )
+        rows = session.execute(stmt).all()
+        return [row[0] for row in rows]
+
+
+async def get_instrument_codes_active_in_range(
+    start_date: date, end_date: date
+) -> list[str]:
+    session: Session
+    with SessionLocal() as session:
+        stmt = (
+            select(BondInstrument.instrument_code)
+            .where(BondInstrument.last_trade_date >= start_date)
+            .where(BondInstrument.last_trade_date.isnot(None))
         )
         rows = session.execute(stmt).all()
         return [row[0] for row in rows]
