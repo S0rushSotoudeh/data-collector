@@ -95,7 +95,7 @@ The goal is to collect tick-level data (price, volume, bid/ask) simultaneously f
 | **ClickHouse queries** | ✅ Done | 7 query functions: latest order book, history, trades, VWAP, OHLCV, spread, latest trades |
 | **Price conversion** | ✅ Done | Int64 storage (rials) with `price_to_storage`/`price_from_storage` |
 | **FastAPI skeleton** | ✅ Done | `GET /`, `GET /health`, SessionMiddleware, admin panel wired in |
-| **Admin Panel** | ✅ Done | SQLAdmin with `sqladmin[full]>=0.27`. 3 views: `BondInstrumentAdmin` (CRUD), `BondOrderBookView` (query by code+date, latest snapshots), `BondTradesView` (query by code+date, latest trades). BasicAuth via `ADMIN_USER`/`ADMIN_PASSWORD`. Bound to `/admin`. |
+| **Admin Panel** | ✅ Done | SQLAdmin with `sqladmin[full]>=0.27`. 4 views: `BondInstrumentAdmin` (CRUD), `BondOrderBookView`, `BondTradesView`, `CeleryTasksView` (trigger sync/backfill). BasicAuth via `ADMIN_USER`/`ADMIN_PASSWORD`. Bound to `/admin`. |
 | **Manage CLI** | ✅ Done | `manage.py shell`, `manage.py bond-sync`, `manage.py clickhouse {migrate,downgrade,history,pending,check}` |
 | **TSETMC Bond Scraper** | ✅ Done | `src/collectors/bond/` — async client (semaphore+retry), instrument sync (PG upsert), order book backfill (CH insert). `explore-data-sources/akhza_history.py` — original prototype |
 | **TSETMC Stock Scraper** | ❌ Missing | — |
