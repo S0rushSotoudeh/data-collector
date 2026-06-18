@@ -22,10 +22,12 @@ class TsetmcClient:
         concurrency: int = 5,
         retries: int = 3,
         timeout: float = 30.0,
+        request_delay: float = 0.5,
     ) -> None:
         self._semaphore = asyncio.Semaphore(concurrency)
         self._retries = retries
         self._timeout = timeout
+        self._request_delay = request_delay
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "TsetmcClient":
@@ -44,6 +46,7 @@ class TsetmcClient:
     async def _request(self, path: str) -> dict[str, Any] | None:
         last_exc: Exception | None = None
         for attempt in range(self._retries):
+            await asyncio.sleep(self._request_delay)
             async with self._semaphore:
                 try:
                     assert self._client is not None
