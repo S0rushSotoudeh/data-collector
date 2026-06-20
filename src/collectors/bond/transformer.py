@@ -2,8 +2,33 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from src.collectors.bond.models import BestLimitEntry, BondInstrumentInfo
+from src.collectors.bond.models import BestLimitEntry, BondInstrumentInfo, TradeEntry
 from src.db.clickhouse import price_to_storage
+
+
+def trades_to_trade_rows(
+    trades: list[TradeEntry],
+    instrument_code: str,
+    trade_date: date,
+    data_source: str = "tsetmc",
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
+    for entry in trades:
+        price = price_to_storage(entry.price)
+        result.append({
+            "instrument_code": instrument_code,
+            "trade_date": trade_date,
+            "trade_time": entry.h_even,
+            "trade_id": entry.n_tran,
+            "price": price,
+            "volume": entry.volume,
+            "value": price * entry.volume,
+            "is_canceled": 1 if entry.canceled else 0,
+            "data_source": data_source,
+            "ingested_at": now,
+        })
+    return result
 
 
 def best_limits_to_order_book_rows(

@@ -82,6 +82,25 @@ class BondInstrumentInfo:
 
 
 @dataclass
+class TradeEntry:
+    h_even: int
+    n_tran: int
+    price: float
+    volume: int
+    canceled: bool
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "TradeEntry":
+        return cls(
+            h_even=int(d.get("hEven", 0)),
+            n_tran=int(d.get("nTran", 0)),
+            price=float(d.get("pTran", 0.0)),
+            volume=int(d.get("qTitTran", 0)),
+            canceled=bool(d.get("canceled", False)),
+        )
+
+
+@dataclass
 class BestLimitEntry:
     h_even: int
     ref_id: int

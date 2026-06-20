@@ -13,6 +13,7 @@ from starlette.responses import HTMLResponse
 from src.celery_app import celery
 from src.tasks import (
     backfill_order_books_task,
+    backfill_trades_task,
     sync_bond_instruments,
 )
 
@@ -57,6 +58,18 @@ class CeleryTasksView(BaseView):
                 start_date_str = form.get("start_date", "")
                 end_date_str = form.get("end_date", "")
                 task = backfill_order_books_task.delay(
+                    start_date_str=start_date_str,
+                    end_date_str=end_date_str,
+                )
+                messages.append({
+                    "type": "success",
+                    "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
+                })
+
+            elif action == "backfill-trades":
+                start_date_str = form.get("start_date", "")
+                end_date_str = form.get("end_date", "")
+                task = backfill_trades_task.delay(
                     start_date_str=start_date_str,
                     end_date_str=end_date_str,
                 )

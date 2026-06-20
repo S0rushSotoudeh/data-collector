@@ -6,6 +6,7 @@ python manage.py shell                    # Open interactive Python shell
     python manage.py bond-sync                # Sync bonds + backfill last 7 days of order books
     python manage.py sync-instruments         # Celery Task 1: sync bond instruments to PostgreSQL
     python manage.py backfill-order-books     # Celery Task 3: backfill order books for a date range
+    python manage.py backfill-trades          # Celery Task 4: backfill trades for a date range
     python manage.py clickhouse migrate       # Apply all pending ClickHouse migrations
     python manage.py clickhouse downgrade      # Revert last ClickHouse migration
     python manage.py clickhouse history        # Show ClickHouse migration history
@@ -128,6 +129,10 @@ def main():
     backfill_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
     backfill_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
 
+    trades_parser = sub.add_parser("backfill-trades", help="Backfill trades for a date range")
+    trades_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
+    trades_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
+
     ch = sub.add_parser("clickhouse", help="ClickHouse migration management")
     ch_sub = ch.add_subparsers(dest="ch_command")
 
@@ -158,6 +163,21 @@ def main():
         print(f"Found {len(codes)} active bonds in range {args.start} to {args.end}")
         result = asyncio.run(
             backfill_for_range(
+                start_date=args.start,
+                end_date=args.end,
+                instrument_codes=codes,
+            )
+        )
+        print(f"Done. Tried: {result['total_days_tried']}, Rows: {result['total_rows']}, Errors: {len(result['errors'])}")
+        for e in result["errors"]:
+            print(f"  {e}")
+    elif args.command == "backfill-trades":
+        from src.collectors.bond.trade_fetcher import backfill_trades as backfill_trades_for_range
+        from src.collectors.bond.order_book_fetcher import get_instrument_codes_active_in_range
+        codes = asyncio.run(get_instrument_codes_active_in_range(args.start, args.end))
+        print(f"Found {len(codes)} active bonds in range {args.start} to {args.end}")
+        result = asyncio.run(
+            backfill_trades_for_range(
                 start_date=args.start,
                 end_date=args.end,
                 instrument_codes=codes,

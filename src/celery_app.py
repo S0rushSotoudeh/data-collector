@@ -29,6 +29,13 @@ celery.conf.beat_schedule = {
         "task": "src.tasks.fetch_yesterday_orderbook",
         "schedule": crontab(hour=beat_hour, minute=0),
     },
+    "fetch-yesterday-trades": {
+        "task": "src.tasks.fetch_yesterday_trades",
+        "schedule": crontab(hour=beat_hour, minute=5),
+    },
 }
 
 celery.autodiscover_tasks(["src.tasks"])
+
+# Ensure task modules are imported so @shared_task decorators register
+import src.tasks  # noqa: F401

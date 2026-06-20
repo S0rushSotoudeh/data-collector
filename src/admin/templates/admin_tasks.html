@@ -45,6 +45,27 @@
 </div>
 
 <div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Trades</h3></div>
+  <div class="card-body">
+    <p>Fetch historical trade history from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-trades">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Trades</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Task Status</h3></div>
   <div class="card-body">
     <p>Check the status and result of a submitted task.</p>

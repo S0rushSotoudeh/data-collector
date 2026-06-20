@@ -50,7 +50,7 @@ async def fetch_order_book_for_date(
         trade_date=trade_date,
         data_source="tsetmc",
     )
-    insert_order_book(rows)
+    await asyncio.to_thread(insert_order_book, rows)
     return len(rows)
 
 

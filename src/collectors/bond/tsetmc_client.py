@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from src.collectors.bond.models import BestLimitEntry, BondInstrumentInfo, BondSearchItem
+from src.collectors.bond.models import BestLimitEntry, BondInstrumentInfo, BondSearchItem, TradeEntry
 
 BASE_URL = "https://cdn.tsetmc.com/api"
 HEADERS = {
@@ -96,6 +96,16 @@ class TsetmcClient:
             return []
         raw_list = data.get("bestLimitsHistory") or []
         return [BestLimitEntry.from_dict(item) for item in raw_list]
+
+    async def get_trade_history(
+        self, ins_code: str, trade_date: date
+    ) -> list[TradeEntry]:
+        date_str = trade_date.strftime("%Y%m%d")
+        data = await self._request(f"/Trade/GetTradeHistory/{ins_code}/{date_str}/true")
+        if data is None:
+            return []
+        raw_list = data.get("tradeHistory") or []
+        return [TradeEntry.from_dict(item) for item in raw_list]
 
     async def close(self) -> None:
         if self._client is not None:
