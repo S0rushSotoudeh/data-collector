@@ -25,6 +25,14 @@ def get_best_limits(ins_code: str, date_yyyymmdd: str):
     resp.raise_for_status()
     return resp.json().get("bestLimitsHistory", [])
 
+def get_trade_history(ins_code: str, date_yyyymmdd: str):
+    url = f"{BASE}/Trade/GetTradeHistory/{ins_code}/{date_yyyymmdd}/true"
+    resp = httpx.get(url, headers=HEADERS, timeout=15)
+    if "text/html" in resp.headers.get("content-type", "") or not resp.text.strip():
+        return None
+    resp.raise_for_status()
+    return resp.json().get("tradeHistory", [])
+
 def get_closing_price(ins_code: str):
     url = f"{BASE}/ClosingPrice/GetClosingPriceHistory/{ins_code}"
     resp = httpx.get(url, headers=HEADERS, timeout=15)
@@ -66,19 +74,42 @@ def main():
     print(f"  5Y avg vol:  {info.get('qTotTran5JAvg')}")
     print()
 
-    two_days_ago = (datetime.now() - timedelta(days=2)).strftime("%Y%m%d")
-    print(f"--- Best Limits for {short} on {two_days_ago} ---")
-    limits = get_best_limits(ins_code, two_days_ago)
-    if limits is None:
-        print("  (access blocked — TSETMC security restrictions)")
-    elif not limits:
-        print("  (no data — market may be closed)")
+    today = datetime.now()
+    # Iran working days: Sat-Wed. Try last 10 days, pick those not Thu/Fri
+    working = []
+    for d in range(14):
+        dt = today - timedelta(days=d)
+        if dt.weekday() not in (4, 5):  # not Fri(4), Thu(5)
+            working.append(dt)
+        if len(working) == 5:
+            break
+    dates = [d.strftime("%Y%m%d") for d in working]
+
+    for dt_str in dates:
+        limits = get_best_limits(ins_code, dt_str)
+        if limits:
+            print(f"--- Best Limits for {short} on {dt_str} ---")
+            print(f"  {'#':<3} {'Time':<8} {'BidPrice':<12} {'BidQty':<8} {'BidOrd':<6} {'AskPrice':<12} {'AskQty':<8} {'AskOrd':<6}")
+            for lim in limits:
+                h = str(lim['hEven']).zfill(6)
+                t = f"{h[:2]}:{h[2:4]}:{h[4:]}"
+                print(f"  {lim['number']:<3} {t:<8} {lim['pMeDem']:<12.0f} {lim['qTitMeDem']:<8} {lim['zOrdMeDem']:<6} {lim['pMeOf']:<12.0f} {lim['qTitMeOf']:<8} {lim['zOrdMeOf']:<6}")
+            break
     else:
-        print(f"  {'#':<3} {'Time':<8} {'BidPrice':<12} {'BidQty':<8} {'BidOrd':<6} {'AskPrice':<12} {'AskQty':<8} {'AskOrd':<6}")
-        for lim in limits:
-            h = str(lim['hEven']).zfill(6)
-            t = f"{h[:2]}:{h[2:4]}:{h[4:]}"
-            print(f"  {lim['number']:<3} {t:<8} {lim['pMeDem']:<12.0f} {lim['qTitMeDem']:<8} {lim['zOrdMeDem']:<6} {lim['pMeOf']:<12.0f} {lim['qTitMeOf']:<8} {lim['zOrdMeOf']:<6}")
+        print("(no best limits data for recent working days)")
+
+    for dt_str in dates:
+        trades = get_trade_history(ins_code, dt_str)
+        if trades:
+            print(f"\n--- TradeHistory for {short} on {dt_str} ---")
+            print(f"  {'Time':<8} {'Seq':<5} {'Volume':<8} {'Price':<14} {'Canceled':<8}")
+            for t in trades:
+                h = str(t['hEven']).zfill(6)
+                tstr = f"{h[:2]}:{h[2:4]}:{h[4:]}"
+                print(f"  {tstr:<8} {t['nTran']:<5} {t['qTitTran']:<8} {t['pTran']:<14.0f} {t['canceled']:<8}")
+            break
+    else:
+        print("\n(no trade data for recent working days)")
 
     print()
     print("--- Test: ClosingPrice History ---")

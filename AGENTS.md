@@ -6,6 +6,7 @@ High-frequency market data aggregation platform. Collects real-time tick data fr
 
 - **All code runs inside Docker Compose** — never run Python directly on host. Use `docker compose exec api ...` for everything.
 - **Admin BaseView pages** must use manual `jinja2.Environment` + `_render()` helper with `self._admin_ref` (never `self.admin`). See `.kilo/agent/admin-panel.md`.
+- **Prefix all shell commands with `rtk`** — saves 60-90% tokens. See `.kilo/rules/rtk-rules.md`.
 
 ## Reference files
 

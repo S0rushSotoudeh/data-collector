@@ -11,6 +11,7 @@ services:
     volumes:
       - ./src:/app/src
       - ./pyproject.toml:/app/pyproject.toml
+      - ./explore-data-sources:/app/explore-data-sources
     env_file:
       - .env
     depends_on:
