@@ -12,9 +12,9 @@ High-frequency market data aggregation platform. Collects real-time tick data fr
 
 | File | What's inside |
 |------|---------------|
-| `.kilo/agent/overview.md` | Architecture diagram, data flow, design philosophy |
-| `.kilo/agent/stack.md` | Technology stack table |
-| `.kilo/agent/status.md` | Implementation status, current state, PG + CH schemas |
-| `.kilo/agent/structure.md` | Full project directory tree |
-| `.kilo/agent/dev-workflow.md` | Docker, test, migration CLI commands |
-| `.kilo/agent/admin-panel.md` | Admin panel template pattern, context keys, how-to-add |
+| `./agent/overview.md` | Architecture diagram, data flow, design philosophy |
+| `./agent/stack.md` | Technology stack table |
+| `./agent/status.md` | Implementation status, current state, PG + CH schemas |
+| `./agent/structure.md` | Full project directory tree |
+| `./agent/dev-workflow.md` | Docker, test, migration CLI commands |
+| `./agent/admin-panel.md` | Admin panel template pattern, context keys, how-to-add |
