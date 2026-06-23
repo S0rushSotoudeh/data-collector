@@ -116,6 +116,7 @@ class TestInstrumentInfoToPgAttrs:
         assert attrs["high_yearly"] == Decimal("844910.00")
         assert attrs["avg_daily_volume_5y"] == 29068
         assert attrs["last_trade_date"] == date(2026, 6, 10)
+        assert attrs["maturity_date"] == date(2026, 12, 14)
         assert attrs["status"] == "active"
 
     def test_no_status(self) -> None:

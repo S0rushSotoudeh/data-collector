@@ -35,10 +35,12 @@ class BondInstrument(SQLModel, table=True):  # type: ignore
     listing_date: date | None = Field(default=None)
     created_at: datetime | None = Field(
         default=None,
+        init=False,
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
     )
     updated_at: datetime | None = Field(
         default=None,
+        init=False,
         sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
     )
 

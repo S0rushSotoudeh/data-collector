@@ -1,3 +1,4 @@
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any
@@ -71,6 +72,7 @@ def instrument_info_to_pg_attrs(
         "instrument_id": info.instrument_id,
         "total_issued": _safe_int(info.total_issued),
         "base_volume": info.base_volume,
+        "maturity_date": _parse_maturity_date(info.name_en),
         "market_code": info.flow,
         "market_name": info.flow_title,
         "segment_code": info.cgr_val_cot,
@@ -111,6 +113,20 @@ def search_item_to_pg_attrs(
         "segment_name": cgr_val_cot_title,
         "status": "active" if last_date == 1 else "expired",
     }
+
+
+def _parse_maturity_date(name_en: str | None) -> date | None:
+    if name_en is None:
+        return None
+    match = re.search(r"(\d{6})$", name_en)
+    if not match:
+        return None
+    raw = match.group(1)
+    try:
+        y, m, d = int(raw[:2]), int(raw[2:4]), int(raw[4:6])
+        return date(2000 + y, m, d)
+    except ValueError:
+        return None
 
 
 def _safe_decimal(value: float | None) -> Decimal | None:
