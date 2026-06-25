@@ -138,6 +138,51 @@ async def test_compute_curve_empty_universe():
 
 
 @pytest.mark.asyncio
+async def test_short_ttm_bond_excluded_from_fit():
+    # A bond maturing within MIN_TTM_YEARS (~30 days) is noise and must not
+    # enter the curve fit or the bond rows.
+    short_bond = SimpleNamespace(
+        instrument_code="SHORT",
+        symbol="SHORT1",
+        maturity_date=date(2024, 1, 15),  # 14 days -> ttm ~0.038 < 30/365.25
+    )
+    bonds = _bonds() + [short_bond]
+    prices = {**_prices(), "SHORT": 990000}
+
+    ch = AsyncMock()
+    order_book_rows = [(c, 90000, p, 100, p, 100) for c, p in prices.items()]
+
+    def _query(sql, parameters=None, **kwargs):
+        result = MagicMock()
+        if "DISTINCT instrument_code" in sql:
+            result.result_rows = [(c,) for c in prices]
+        else:
+            result.result_rows = order_book_rows
+        return result
+
+    ch.query = AsyncMock(side_effect=_query)
+    session_factory = _build_session_mock(bonds)
+    insert_fits = MagicMock()
+    insert_bonds = MagicMock()
+
+    with (
+        patch("src.analytics.engine.get_async_client", AsyncMock(return_value=ch)),
+        patch("src.analytics.engine.SessionLocal", session_factory),
+        patch("src.analytics.engine.insert_yield_curve_fits", insert_fits),
+        patch("src.analytics.engine.insert_yield_curve_bonds", insert_bonds),
+    ):
+        result = await compute_curve_for_date(TRADE_DATE.isoformat())
+
+    assert "error" not in result
+    fit_rows = insert_fits.call_args.args[0]
+    for r in fit_rows:
+        assert r["n_bonds"] == 5  # 6 in universe, short one excluded
+        assert r["n_bonds_total"] == 6
+    bond_rows = insert_bonds.call_args.args[0]
+    assert all(r["instrument_code"] != "SHORT" for r in bond_rows)
+
+
+@pytest.mark.asyncio
 async def test_compute_curve_too_few_bonds():
     ch = _build_ch_mock()
     insert_fits = MagicMock()

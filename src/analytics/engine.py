@@ -17,6 +17,11 @@ from src.db.session import SessionLocal
 
 _ERROR_MESSAGE_MAX = 200
 
+# Bonds very close to maturity produce distorted yields (price noise is
+# amplified by 1/ttm) and corrupt the Nelson-Siegel fit. Exclude them from
+# the curve fit. ~30 days.
+MIN_TTM_YEARS = 30.0 / 365.25
+
 
 def _hhmmss_to_seconds(t: int) -> int:
     h = t // 10000
@@ -118,13 +123,16 @@ def _bonds_for_side(
         snap = state.get(code)
         if not snap or snap[vol_key] <= 0:
             continue
+        ttm = info["ttm"]
+        if ttm < MIN_TTM_YEARS:
+            continue
         price = snap[price_key]
-        ytm = yield_from_price(price, FACE_VALUE, info["ttm"])
+        ytm = yield_from_price(price, FACE_VALUE, ttm)
         out.append(
             {
                 "code": code,
                 "symbol": info["symbol"],
-                "ttm": info["ttm"],
+                "ttm": ttm,
                 "price": price,
                 "volume": snap[vol_key],
                 "yield": ytm,
