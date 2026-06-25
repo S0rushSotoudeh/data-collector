@@ -32,11 +32,7 @@ celery.conf.beat_schedule = {
     "fetch-yesterday-trades": {
         "task": "src.tasks.fetch_yesterday_trades",
         "schedule": crontab(hour=beat_hour, minute=5),
-    },
-    "compute-yield-curve-snapshot": {
-        "task": "src.tasks.compute_yield_curve_snapshot",
-        "schedule": 60.0,
-    },
+    }
 }
 
 celery.autodiscover_tasks(["src.tasks"])
