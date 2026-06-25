@@ -2,10 +2,21 @@ from datetime import date
 from typing import Any
 
 from src.db.clickhouse import get_async_client, price_from_storage
-from src.db.clickhouse.schema import ORDER_BOOK_TABLE, ORDER_BOOK_COLUMNS, TRADES_TABLE, TRADES_COLUMNS
+from src.db.clickhouse.schema import (
+    ORDER_BOOK_TABLE,
+    ORDER_BOOK_COLUMNS,
+    TRADES_TABLE,
+    TRADES_COLUMNS,
+    YIELD_CURVE_FITS_TABLE,
+    YIELD_CURVE_FITS_COLUMNS,
+    YIELD_CURVE_BONDS_TABLE,
+    YIELD_CURVE_BONDS_COLUMNS,
+)
 
 _OB_COLUMNS = ORDER_BOOK_COLUMNS
 _TR_COLUMNS = TRADES_COLUMNS
+_YC_FITS_COLUMNS = YIELD_CURVE_FITS_COLUMNS
+_YC_BONDS_COLUMNS = YIELD_CURVE_BONDS_COLUMNS
 
 
 async def get_latest_order_book(
@@ -341,3 +352,94 @@ def _row_to_dict_tr(row: tuple[Any, ...]) -> dict[str, Any]:
     d["price"] = price_from_storage(d["price"])
     d["value"] = price_from_storage(d["value"])
     return d
+
+
+async def get_yield_curve_fits(
+    trade_date: date,
+    curve_side: str | None = None,
+    from_time: int | None = None,
+    to_time: int | None = None,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses = ["trade_date = {dt:Date}"]
+    params: dict[str, Any] = {"dt": trade_date}
+
+    if curve_side and curve_side != "both":
+        where_clauses.append("curve_side = {side:String}")
+        params["side"] = curve_side
+    if from_time is not None:
+        where_clauses.append("trade_time >= {ft:UInt32}")
+        params["ft"] = from_time
+    if to_time is not None:
+        where_clauses.append("trade_time <= {tt:UInt32}")
+        params["tt"] = to_time
+
+    where = " AND ".join(where_clauses)
+    cols = ", ".join(f"`{c}`" for c in _YC_FITS_COLUMNS)
+    q = (
+        f"SELECT {cols} FROM ("
+        f"  SELECT {cols} FROM `{YIELD_CURVE_FITS_TABLE}` "
+        f"  WHERE {where} "
+        f"  ORDER BY computed_at DESC "
+        f"  LIMIT 1 BY trade_date, trade_time, curve_side"
+        f") ORDER BY trade_time ASC, curve_side ASC"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_ycf(r) for r in rows]
+
+
+async def get_latest_yield_curve(
+    curve_side: str | None = None,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where = ""
+    params: dict[str, Any] = {}
+    if curve_side and curve_side != "both":
+        where = "WHERE curve_side = {side:String}"
+        params["side"] = curve_side
+
+    cols = ", ".join(f"`{c}`" for c in _YC_FITS_COLUMNS)
+    q = (
+        f"SELECT {cols} FROM ("
+        f"  SELECT {cols} FROM `{YIELD_CURVE_FITS_TABLE}` {where} "
+        f"  ORDER BY computed_at DESC "
+        f"  LIMIT 1 BY curve_side"
+        f") ORDER BY curve_side ASC"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_ycf(r) for r in rows]
+
+
+async def get_yield_curve_bonds(
+    trade_date: date,
+    trade_time: int,
+    curve_side: str | None = None,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses = ["trade_date = {dt:Date}", "trade_time = {tt:UInt32}"]
+    params: dict[str, Any] = {"dt": trade_date, "tt": trade_time}
+
+    if curve_side and curve_side != "both":
+        where_clauses.append("curve_side = {side:String}")
+        params["side"] = curve_side
+
+    where = " AND ".join(where_clauses)
+    cols = ", ".join(f"`{c}`" for c in _YC_BONDS_COLUMNS)
+    q = (
+        f"SELECT {cols} FROM ("
+        f"  SELECT {cols} FROM `{YIELD_CURVE_BONDS_TABLE}` "
+        f"  WHERE {where} "
+        f"  ORDER BY computed_at DESC "
+        f"  LIMIT 1 BY instrument_code, trade_date, trade_time, curve_side"
+        f") ORDER BY instrument_code ASC, curve_side ASC"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_ycb(r) for r in rows]
+
+
+def _row_to_dict_ycf(row: tuple[Any, ...]) -> dict[str, Any]:
+    return dict(zip(_YC_FITS_COLUMNS, row))
+
+
+def _row_to_dict_ycb(row: tuple[Any, ...]) -> dict[str, Any]:
+    return dict(zip(_YC_BONDS_COLUMNS, row))

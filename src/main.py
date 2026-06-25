@@ -6,6 +6,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from src.admin import create_admin
 from src.admin.auth import BasicAuthBackend
 from src.routes.admin_tasks import router as admin_tasks_router
+from src.routes.yield_curve import router as yield_curve_router
 
 _SECRET_KEY = os.environ["SECRET_KEY"]
 
@@ -22,6 +23,7 @@ app.state.auth_backend = _auth_backend
 create_admin(app, _auth_backend)
 
 app.include_router(admin_tasks_router, prefix="")
+app.include_router(yield_curve_router, prefix="")
 
 
 @app.get("/")

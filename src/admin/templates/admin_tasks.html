@@ -66,6 +66,38 @@
 </div>
 
 <div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Yield Curve Snapshot</h3></div>
+  <div class="card-body">
+    <p>Compute yield curves for today (uses latest order book data). Runs automatically every 60s during market hours.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="compute-yield-curve">
+      <button type="submit" class="btn btn-success">Compute Yield Curve Snapshot</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Yield Curves</h3></div>
+  <div class="card-body">
+    <p>Backfill yield curves for all dates in the given range (reads from existing order book data in ClickHouse).</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-yield-curves">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Yield Curves</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Task Status</h3></div>
   <div class="card-body">
     <p>Check the status and result of a submitted task.</p>

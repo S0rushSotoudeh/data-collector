@@ -19,7 +19,7 @@ COPY pyproject.toml .
 
 RUN pip install --upgrade "pip>=26.1" --no-cache-dir && \
     pip install uv --no-cache-dir && \
-    uv sync --no-dev
+    uv sync --all-extras --no-dev
 
 RUN useradd --create-home appuser
 

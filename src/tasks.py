@@ -1,5 +1,5 @@
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from celery import shared_task
 
@@ -55,3 +55,84 @@ def backfill_trades_task(start_date_str: str, end_date_str: str) -> dict:
     )
     result["instrument_count"] = len(codes)
     return result
+
+
+@shared_task
+def compute_yield_curve_snapshot() -> dict:
+    from src.analytics.engine import compute_curve_for_date
+    from zoneinfo import ZoneInfo
+
+    tehran = ZoneInfo("Asia/Tehran")
+    now_tehran = datetime.now(tehran)
+    hour = now_tehran.hour
+    minute = now_tehran.minute
+    market_open = (hour == 8 and minute >= 30) or (hour > 8 and hour < 15)
+    if not market_open:
+        return {"status": "skipped", "reason": "Outside market hours"}
+    today_str = now_tehran.date().isoformat()
+    return asyncio.run(compute_curve_for_date(today_str))
+
+
+@shared_task(bind=True)
+def backfill_yield_curves(self, start_date_str: str, end_date_str: str) -> dict:
+    from src.analytics.engine import compute_curve_for_date
+    from src.db.clickhouse import get_async_client
+
+    async def _backfill():
+        ch = await get_async_client()
+        sd = date.fromisoformat(start_date_str)
+        ed = date.fromisoformat(end_date_str)
+
+        source_rows = (
+            await ch.query(
+                "SELECT DISTINCT trade_date FROM bond_order_book "
+                "WHERE trade_date >= {sd:Date} AND trade_date <= {ed:Date} "
+                "ORDER BY trade_date",
+                parameters={"sd": sd, "ed": ed},
+            )
+        ).result_rows
+        source_dates = {r[0] for r in source_rows}
+
+        existing_rows = (
+            await ch.query(
+                "SELECT trade_date, curve_side FROM ("
+                "  SELECT trade_date, curve_side, converged "
+                "  FROM yield_curve_fits "
+                "  WHERE trade_date >= {sd:Date} AND trade_date <= {ed:Date} "
+                "  ORDER BY computed_at DESC "
+                "  LIMIT 1 BY trade_date, curve_side"
+                ") WHERE converged = 1",
+                parameters={"sd": sd, "ed": ed},
+            )
+        ).result_rows
+        done_sides = {(r[0], r[1]) for r in existing_rows}
+
+        pending = []
+        for d in sorted(source_dates):
+            bid_done = (d, "bid") in done_sides
+            ask_done = (d, "ask") in done_sides
+            if bid_done and ask_done:
+                continue
+            pending.append(d)
+
+        skipped = len(source_dates) - len(pending)
+        total = len(pending)
+
+        if skipped:
+            self.logger.info(
+                "Yield curve backfill: %d dates fully done, %d pending",
+                skipped, total,
+            )
+
+        for i, d in enumerate(pending, 1):
+            d_str = d.isoformat()
+            self.logger.info("Yield curve backfill [%d/%d] %s", i, total, d_str)
+            result = await compute_curve_for_date(d_str)
+            self.logger.info("Yield curve backfill %s done: %s", d_str, result)
+
+        return {
+            "dates_processed": total,
+            "dates_skipped": skipped,
+        }
+
+    return asyncio.run(_backfill())

@@ -7,12 +7,16 @@ class TestSchema:
     def test_ensure_tables_creates_both_tables(self, mock_ch_client: MagicMock) -> None:
         ensure_tables()
 
-        assert mock_ch_client.command.call_count == 3
+        assert mock_ch_client.command.call_count == 5
         ddl1 = mock_ch_client.command.call_args_list[1][0][0]
         ddl2 = mock_ch_client.command.call_args_list[2][0][0]
+        ddl3 = mock_ch_client.command.call_args_list[3][0][0]
+        ddl4 = mock_ch_client.command.call_args_list[4][0][0]
 
         assert ORDER_BOOK_TABLE in ddl1
         assert TRADES_TABLE in ddl2
+        assert "yield_curve_fits" in ddl3
+        assert "yield_curve_bonds" in ddl4
 
     def test_ddl_uses_merge_tree_not_replicated(self) -> None:
         from src.db.clickhouse.schema import _ORDER_BOOK_DDL, _TRADES_DDL

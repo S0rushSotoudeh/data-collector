@@ -11,6 +11,8 @@ def test_all_tasks_registered() -> None:
         "src.tasks.backfill_order_books_task",
         "src.tasks.fetch_yesterday_trades",
         "src.tasks.backfill_trades_task",
+        "src.tasks.compute_yield_curve_snapshot",
+        "src.tasks.backfill_yield_curves",
     }
     registered = set(task_names)
     assert registered == expected, (

@@ -117,6 +117,35 @@ services:
       retries: 5
     restart: unless-stopped
 
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: dc-flower
+    user: "${UID:-1000}:${GID:-1000}"
+    ports:
+      - "127.0.0.1:5555:5555"
+    volumes:
+      - ./src:/app/src
+      - ./pyproject.toml:/app/pyproject.toml
+    env_file:
+      - .env
+    depends_on:
+      redis:
+        condition: service_started
+    command:
+      [
+        "celery",
+        "-A",
+        "src.celery_app",
+        "flower",
+        "--port=5555",
+        "--broker=redis://redis:6379/0",
+        "--basic-auth=${FLOWER_BASIC_AUTH:-admin:changeme}",
+      ]
+    restart: unless-stopped
+
   dbgate:
     image: dbgate/dbgate:latest
     container_name: dc-dbgate
