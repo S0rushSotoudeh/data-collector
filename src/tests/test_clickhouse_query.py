@@ -11,6 +11,10 @@ from src.db.clickhouse.query import (
     get_order_book_history,
     get_trade_history,
     get_daily_spread,
+    get_yield_curve_fits_paginated,
+    count_yield_curve_fits,
+    get_yield_curve_bonds_paginated,
+    count_yield_curve_bonds,
 )
 
 
@@ -101,3 +105,120 @@ class TestLatestTrades:
         result = await get_latest_trades(limit=5)
         assert len(result) == 1
         assert result[0]["price"] == 842190.0
+
+
+class TestYieldCurveFits:
+    _YCF_ROW = (
+        date(2026, 6, 16), 34200, "bid",
+        0.08, 0.02, 0.01, 1.5, 0.003, 5, 8, 1, "", "2026-06-16 09:30:00.000",
+    )
+
+    async def test_paginated_with_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [self._YCF_ROW]
+        result = await get_yield_curve_fits_paginated(
+            trade_date=date(2026, 6, 16),
+            curve_side="bid",
+            converged=1,
+            offset=0,
+            limit=100,
+        )
+        assert len(result) == 1
+        assert result[0]["trade_date"] == date(2026, 6, 16)
+        assert result[0]["curve_side"] == "bid"
+        assert result[0]["converged"] == 1
+
+    async def test_paginated_without_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [self._YCF_ROW]
+        result = await get_yield_curve_fits_paginated()
+        assert len(result) == 1
+
+    async def test_paginated_empty(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        result = await get_yield_curve_fits_paginated(
+            trade_date=date(2026, 6, 16),
+        )
+        assert result == []
+
+    async def test_count_with_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [(3,)]
+        total = await count_yield_curve_fits(
+            trade_date=date(2026, 6, 16),
+            curve_side="bid",
+            converged=1,
+        )
+        assert total == 3
+
+    async def test_count_without_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [(10,)]
+        total = await count_yield_curve_fits()
+        assert total == 10
+
+    async def test_count_empty(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        total = await count_yield_curve_fits(trade_date=date(2026, 6, 16))
+        assert total == 0
+
+    async def test_converged_zero_retained(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [(2,)]
+        total = await count_yield_curve_fits(
+            trade_date=date(2026, 6, 16),
+            converged=0,
+        )
+        assert total == 2
+        call_kwargs = mock_async_client.query.call_args[1]
+        assert "conv" in call_kwargs["parameters"]
+
+
+class TestYieldCurveBonds:
+    _YCB_ROW = (
+        date(2026, 6, 16), 34200, "inst1", "bid", "اخزا",
+        2.5, 950000, 100, 0.18, 0.19, 100.0, "2026-06-16 09:30:00.000",
+    )
+
+    async def test_paginated_with_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [self._YCB_ROW]
+        result = await get_yield_curve_bonds_paginated(
+            trade_date=date(2026, 6, 16),
+            trade_time=34200,
+            instrument_code="inst1",
+            curve_side="bid",
+            symbol="اخزا",
+            offset=0,
+            limit=100,
+        )
+        assert len(result) == 1
+        assert result[0]["trade_date"] == date(2026, 6, 16)
+        assert result[0]["instrument_code"] == "inst1"
+        assert result[0]["curve_side"] == "bid"
+
+    async def test_paginated_without_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [self._YCB_ROW]
+        result = await get_yield_curve_bonds_paginated()
+        assert len(result) == 1
+
+    async def test_paginated_empty(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        result = await get_yield_curve_bonds_paginated(
+            trade_date=date(2026, 6, 16),
+        )
+        assert result == []
+
+    async def test_count_with_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [(5,)]
+        total = await count_yield_curve_bonds(
+            trade_date=date(2026, 6, 16),
+            trade_time=34200,
+            instrument_code="inst1",
+            curve_side="bid",
+        )
+        assert total == 5
+
+    async def test_count_without_filters(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [(20,)]
+        total = await count_yield_curve_bonds()
+        assert total == 20
+
+    async def test_count_empty(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        total = await count_yield_curve_bonds(trade_date=date(2026, 6, 16))
+        assert total == 0

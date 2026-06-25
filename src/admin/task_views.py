@@ -1,15 +1,11 @@
-from pathlib import Path
 from typing import Any
 
-import jinja2
-import sqladmin
 from celery.result import AsyncResult
 from sqladmin import BaseView, expose
-from sqladmin.flash import get_flashed_messages
-from sqladmin.secret import Secret
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
+from src.admin._render import _render
 from src.celery_app import celery
 from src.tasks import (
     backfill_order_books_task,
@@ -18,22 +14,6 @@ from src.tasks import (
     compute_yield_curve_snapshot,
     sync_bond_instruments,
 )
-
-_TEMPLATE_DIR = Path(__file__).parent / "templates"
-_SQLADMIN_TEMPLATE_DIR = Path(sqladmin.__file__).parent / "templates"
-_TEMPLATE_ENV = jinja2.Environment(
-    loader=jinja2.FileSystemLoader([str(_TEMPLATE_DIR), str(_SQLADMIN_TEMPLATE_DIR)]),
-    autoescape=True,
-    auto_reload=False,
-)
-_TEMPLATE_ENV.globals["get_flashed_messages"] = get_flashed_messages
-_TEMPLATE_ENV.globals["Secret"] = Secret
-_TEMPLATE_ENV.globals["min"] = min
-_TEMPLATE_ENV.globals["zip"] = zip
-
-
-def _render(name: str, ctx: dict[str, Any]) -> str:
-    return _TEMPLATE_ENV.get_template(name).render(ctx)
 
 
 class CeleryTasksView(BaseView):

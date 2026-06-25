@@ -19,6 +19,64 @@ _YC_FITS_COLUMNS = YIELD_CURVE_FITS_COLUMNS
 _YC_BONDS_COLUMNS = YIELD_CURVE_BONDS_COLUMNS
 
 
+def _build_where(specs: list[tuple]) -> tuple[str, dict[str, Any]]:
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    for spec in specs:
+        column, param_name, ch_type, value = spec[:4]
+        op = spec[4] if len(spec) > 4 else "="
+        if value is None:
+            continue
+        clauses.append(f"{column} {op} {{{param_name}:{ch_type}}}")
+        params[param_name] = value
+    where = ""
+    if clauses:
+        where = "WHERE " + " AND ".join(clauses)
+    return where, params
+
+
+def _ob_filters(
+    instrument_code: str | None = None,
+    trade_date: date | None = None,
+    depth_level: int | None = None,
+    data_source: str | None = None,
+) -> list[tuple]:
+    specs: list[tuple] = []
+    if instrument_code:
+        specs.append(("instrument_code", "code", "String", instrument_code))
+    if trade_date:
+        specs.append(("trade_date", "dt", "Date", trade_date))
+    if depth_level is not None:
+        specs.append(("depth_level", "dl", "UInt8", depth_level))
+    if data_source:
+        specs.append(("data_source", "ds", "String", data_source))
+    return specs
+
+
+def _tr_filters(
+    instrument_code: str | None = None,
+    trade_date: date | None = None,
+    min_price: int | None = None,
+    max_price: int | None = None,
+    is_canceled: int | None = None,
+    data_source: str | None = None,
+) -> list[tuple]:
+    specs: list[tuple] = []
+    if instrument_code:
+        specs.append(("instrument_code", "code", "String", instrument_code))
+    if trade_date:
+        specs.append(("trade_date", "dt", "Date", trade_date))
+    if min_price is not None:
+        specs.append(("price", "minp", "Int64", min_price, ">="))
+    if max_price is not None:
+        specs.append(("price", "maxp", "Int64", max_price, "<="))
+    if is_canceled is not None:
+        specs.append(("is_canceled", "ic", "UInt8", is_canceled))
+    if data_source:
+        specs.append(("data_source", "ds", "String", data_source))
+    return specs
+
+
 async def get_latest_order_book(
     instrument_code: str,
     trade_date: date,
@@ -189,33 +247,15 @@ async def get_order_book_paginated(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
-    where_clauses: list[str] = []
-    params: dict[str, Any] = {}
-
-    if instrument_code:
-        where_clauses.append("instrument_code = {code:String}")
-        params["code"] = instrument_code
-    if trade_date:
-        where_clauses.append("trade_date = {dt:Date}")
-        params["dt"] = trade_date
-    if depth_level is not None:
-        where_clauses.append("depth_level = {dl:UInt8}")
-        params["dl"] = depth_level
-    if data_source:
-        where_clauses.append("data_source = {ds:String}")
-        params["ds"] = data_source
-
-    where = ""
-    if where_clauses:
-        where = "WHERE " + " AND ".join(where_clauses)
-
+    specs = _ob_filters(instrument_code, trade_date, depth_level, data_source)
+    where, params = _build_where(specs)
+    params["lim"] = limit
+    params["off"] = offset
     q = (
         f"SELECT * FROM `{ORDER_BOOK_TABLE}` FINAL {where} "
         f"ORDER BY trade_date DESC, trade_time DESC, depth_level ASC "
         f"LIMIT {{lim:UInt32}} OFFSET {{off:UInt32}}"
     )
-    params["lim"] = limit
-    params["off"] = offset
     rows = (await client.query(q, parameters=params)).result_rows
     return [_row_to_dict_ob(r) for r in rows]
 
@@ -227,26 +267,8 @@ async def count_order_book(
     data_source: str | None = None,
 ) -> int:
     client = await get_async_client()
-    where_clauses: list[str] = []
-    params: dict[str, Any] = {}
-
-    if instrument_code:
-        where_clauses.append("instrument_code = {code:String}")
-        params["code"] = instrument_code
-    if trade_date:
-        where_clauses.append("trade_date = {dt:Date}")
-        params["dt"] = trade_date
-    if depth_level is not None:
-        where_clauses.append("depth_level = {dl:UInt8}")
-        params["dl"] = depth_level
-    if data_source:
-        where_clauses.append("data_source = {ds:String}")
-        params["ds"] = data_source
-
-    where = ""
-    if where_clauses:
-        where = "WHERE " + " AND ".join(where_clauses)
-
+    specs = _ob_filters(instrument_code, trade_date, depth_level, data_source)
+    where, params = _build_where(specs)
     q = f"SELECT count() FROM `{ORDER_BOOK_TABLE}` FINAL {where}"
     rows = (await client.query(q, parameters=params)).result_rows
     return int(rows[0][0]) if rows else 0
@@ -263,39 +285,15 @@ async def get_trades_paginated(
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     client = await get_async_client()
-    where_clauses: list[str] = []
-    params: dict[str, Any] = {}
-
-    if instrument_code:
-        where_clauses.append("instrument_code = {code:String}")
-        params["code"] = instrument_code
-    if trade_date:
-        where_clauses.append("trade_date = {dt:Date}")
-        params["dt"] = trade_date
-    if min_price is not None:
-        where_clauses.append("price >= {minp:Int64}")
-        params["minp"] = min_price
-    if max_price is not None:
-        where_clauses.append("price <= {maxp:Int64}")
-        params["maxp"] = max_price
-    if is_canceled is not None:
-        where_clauses.append("is_canceled = {ic:UInt8}")
-        params["ic"] = is_canceled
-    if data_source:
-        where_clauses.append("data_source = {ds:String}")
-        params["ds"] = data_source
-
-    where = ""
-    if where_clauses:
-        where = "WHERE " + " AND ".join(where_clauses)
-
+    specs = _tr_filters(instrument_code, trade_date, min_price, max_price, is_canceled, data_source)
+    where, params = _build_where(specs)
+    params["lim"] = limit
+    params["off"] = offset
     q = (
         f"SELECT * FROM `{TRADES_TABLE}` FINAL {where} "
         f"ORDER BY trade_date DESC, trade_time DESC "
         f"LIMIT {{lim:UInt32}} OFFSET {{off:UInt32}}"
     )
-    params["lim"] = limit
-    params["off"] = offset
     rows = (await client.query(q, parameters=params)).result_rows
     return [_row_to_dict_tr(r) for r in rows]
 
@@ -309,32 +307,8 @@ async def count_trades(
     data_source: str | None = None,
 ) -> int:
     client = await get_async_client()
-    where_clauses: list[str] = []
-    params: dict[str, Any] = {}
-
-    if instrument_code:
-        where_clauses.append("instrument_code = {code:String}")
-        params["code"] = instrument_code
-    if trade_date:
-        where_clauses.append("trade_date = {dt:Date}")
-        params["dt"] = trade_date
-    if min_price is not None:
-        where_clauses.append("price >= {minp:Int64}")
-        params["minp"] = min_price
-    if max_price is not None:
-        where_clauses.append("price <= {maxp:Int64}")
-        params["maxp"] = max_price
-    if is_canceled is not None:
-        where_clauses.append("is_canceled = {ic:UInt8}")
-        params["ic"] = is_canceled
-    if data_source:
-        where_clauses.append("data_source = {ds:String}")
-        params["ds"] = data_source
-
-    where = ""
-    if where_clauses:
-        where = "WHERE " + " AND ".join(where_clauses)
-
+    specs = _tr_filters(instrument_code, trade_date, min_price, max_price, is_canceled, data_source)
+    where, params = _build_where(specs)
     q = f"SELECT count() FROM `{TRADES_TABLE}` FINAL {where}"
     rows = (await client.query(q, parameters=params)).result_rows
     return int(rows[0][0]) if rows else 0
@@ -352,6 +326,50 @@ def _row_to_dict_tr(row: tuple[Any, ...]) -> dict[str, Any]:
     d["price"] = price_from_storage(d["price"])
     d["value"] = price_from_storage(d["value"])
     return d
+
+
+def _row_to_dict_ycf(row: tuple[Any, ...]) -> dict[str, Any]:
+    return dict(zip(_YC_FITS_COLUMNS, row))
+
+
+def _row_to_dict_ycb(row: tuple[Any, ...]) -> dict[str, Any]:
+    return dict(zip(_YC_BONDS_COLUMNS, row))
+
+
+def _ycf_filters(
+    trade_date: date | None = None,
+    curve_side: str | None = None,
+    converged: int | None = None,
+) -> list[tuple]:
+    specs: list[tuple] = []
+    if trade_date is not None:
+        specs.append(("trade_date", "dt", "Date", trade_date))
+    if curve_side not in (None, "", "both"):
+        specs.append(("curve_side", "side", "String", curve_side))
+    if converged is not None:
+        specs.append(("converged", "conv", "UInt8", converged))
+    return specs
+
+
+def _ycb_filters(
+    trade_date: date | None = None,
+    trade_time: int | None = None,
+    instrument_code: str | None = None,
+    curve_side: str | None = None,
+    symbol: str | None = None,
+) -> list[tuple]:
+    specs: list[tuple] = []
+    if trade_date is not None:
+        specs.append(("trade_date", "dt", "Date", trade_date))
+    if trade_time is not None:
+        specs.append(("trade_time", "tt", "UInt32", trade_time))
+    if instrument_code:
+        specs.append(("instrument_code", "code", "String", instrument_code))
+    if curve_side not in (None, "", "both"):
+        specs.append(("curve_side", "side", "String", curve_side))
+    if symbol:
+        specs.append(("symbol", "sym", "String", symbol))
+    return specs
 
 
 async def get_yield_curve_fits(
@@ -437,9 +455,73 @@ async def get_yield_curve_bonds(
     return [_row_to_dict_ycb(r) for r in rows]
 
 
-def _row_to_dict_ycf(row: tuple[Any, ...]) -> dict[str, Any]:
-    return dict(zip(_YC_FITS_COLUMNS, row))
+async def get_yield_curve_fits_paginated(
+    trade_date: date | None = None,
+    curve_side: str | None = None,
+    converged: int | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    specs = _ycf_filters(trade_date, curve_side, converged)
+    where, params = _build_where(specs)
+    params["lim"] = limit
+    params["off"] = offset
+    q = (
+        f"SELECT * FROM `{YIELD_CURVE_FITS_TABLE}` FINAL {where} "
+        f"ORDER BY trade_date DESC, trade_time DESC, curve_side ASC "
+        f"LIMIT {{lim:UInt32}} OFFSET {{off:UInt32}}"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_ycf(r) for r in rows]
 
 
-def _row_to_dict_ycb(row: tuple[Any, ...]) -> dict[str, Any]:
-    return dict(zip(_YC_BONDS_COLUMNS, row))
+async def count_yield_curve_fits(
+    trade_date: date | None = None,
+    curve_side: str | None = None,
+    converged: int | None = None,
+) -> int:
+    client = await get_async_client()
+    specs = _ycf_filters(trade_date, curve_side, converged)
+    where, params = _build_where(specs)
+    q = f"SELECT count() FROM `{YIELD_CURVE_FITS_TABLE}` FINAL {where}"
+    rows = (await client.query(q, parameters=params)).result_rows
+    return int(rows[0][0]) if rows else 0
+
+
+async def get_yield_curve_bonds_paginated(
+    trade_date: date | None = None,
+    trade_time: int | None = None,
+    instrument_code: str | None = None,
+    curve_side: str | None = None,
+    symbol: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    specs = _ycb_filters(trade_date, trade_time, instrument_code, curve_side, symbol)
+    where, params = _build_where(specs)
+    params["lim"] = limit
+    params["off"] = offset
+    q = (
+        f"SELECT * FROM `{YIELD_CURVE_BONDS_TABLE}` FINAL {where} "
+        f"ORDER BY trade_date DESC, trade_time DESC, instrument_code ASC, curve_side ASC "
+        f"LIMIT {{lim:UInt32}} OFFSET {{off:UInt32}}"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [_row_to_dict_ycb(r) for r in rows]
+
+
+async def count_yield_curve_bonds(
+    trade_date: date | None = None,
+    trade_time: int | None = None,
+    instrument_code: str | None = None,
+    curve_side: str | None = None,
+    symbol: str | None = None,
+) -> int:
+    client = await get_async_client()
+    specs = _ycb_filters(trade_date, trade_time, instrument_code, curve_side, symbol)
+    where, params = _build_where(specs)
+    q = f"SELECT count() FROM `{YIELD_CURVE_BONDS_TABLE}` FINAL {where}"
+    rows = (await client.query(q, parameters=params)).result_rows
+    return int(rows[0][0]) if rows else 0

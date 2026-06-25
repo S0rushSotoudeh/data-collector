@@ -1,7 +1,10 @@
 import asyncio
+import logging
 from datetime import date, datetime, timedelta, timezone
 
 from celery import shared_task
+
+logger = logging.getLogger(__name__)
 
 from src.collectors.bond.instrument_sync import sync_instruments_to_pg
 from src.collectors.bond.order_book_fetcher import (
@@ -119,16 +122,16 @@ def backfill_yield_curves(self, start_date_str: str, end_date_str: str) -> dict:
         total = len(pending)
 
         if skipped:
-            self.logger.info(
+            logger.info(
                 "Yield curve backfill: %d dates fully done, %d pending",
                 skipped, total,
             )
 
         for i, d in enumerate(pending, 1):
             d_str = d.isoformat()
-            self.logger.info("Yield curve backfill [%d/%d] %s", i, total, d_str)
+            logger.info("Yield curve backfill [%d/%d] %s", i, total, d_str)
             result = await compute_curve_for_date(d_str)
-            self.logger.info("Yield curve backfill %s done: %s", d_str, result)
+            logger.info("Yield curve backfill %s done: %s", d_str, result)
 
         return {
             "dates_processed": total,
