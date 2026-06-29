@@ -455,6 +455,89 @@ async def get_yield_curve_bonds(
     return [_row_to_dict_ycb(r) for r in rows]
 
 
+async def get_yield_spread_intraday(
+    instrument_code: str,
+    trade_date: date,
+    curve_side: str | None = None,
+    from_time: int | None = None,
+    to_time: int | None = None,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses = [
+        "instrument_code = {code:String}",
+        "trade_date = {dt:Date}",
+        "spread_bps IS NOT NULL",
+    ]
+    params: dict[str, Any] = {"code": instrument_code, "dt": trade_date}
+
+    if curve_side and curve_side != "both":
+        where_clauses.append("curve_side = {side:String}")
+        params["side"] = curve_side
+    if from_time is not None:
+        where_clauses.append("trade_time >= {ft:UInt32}")
+        params["ft"] = from_time
+    if to_time is not None:
+        where_clauses.append("trade_time <= {tt:UInt32}")
+        params["tt"] = to_time
+
+    where = " AND ".join(where_clauses)
+    q = (
+        f"SELECT trade_time, curve_side, spread_bps "
+        f"FROM `{YIELD_CURVE_BONDS_TABLE}` FINAL "
+        f"WHERE {where} "
+        f"ORDER BY trade_time ASC, curve_side ASC"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    result: list[dict[str, Any]] = []
+    for r in rows:
+        result.append({
+            "trade_time": int(r[0]),
+            "curve_side": r[1],
+            "spread_bps": float(r[2]) if r[2] is not None else None,
+        })
+    return result
+
+
+async def get_yield_spread_daily(
+    instrument_code: str,
+    from_date: date,
+    to_date: date,
+    curve_side: str | None = None,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses = [
+        "instrument_code = {code:String}",
+        "trade_date BETWEEN {fd:Date} AND {td:Date}",
+        "spread_bps IS NOT NULL",
+    ]
+    params: dict[str, Any] = {
+        "code": instrument_code,
+        "fd": from_date,
+        "td": to_date,
+    }
+
+    if curve_side and curve_side != "both":
+        where_clauses.append("curve_side = {side:String}")
+        params["side"] = curve_side
+
+    where = " AND ".join(where_clauses)
+    q = (
+        f"SELECT trade_date, curve_side, spread_bps "
+        f"FROM `{YIELD_CURVE_BONDS_TABLE}` FINAL "
+        f"WHERE {where} "
+        f"ORDER BY trade_date ASC, curve_side ASC"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    result: list[dict[str, Any]] = []
+    for r in rows:
+        result.append({
+            "trade_date": r[0],
+            "curve_side": r[1],
+            "spread_bps": float(r[2]) if r[2] is not None else None,
+        })
+    return result
+
+
 async def get_yield_curve_fits_paginated(
     trade_date: date | None = None,
     curve_side: str | None = None,

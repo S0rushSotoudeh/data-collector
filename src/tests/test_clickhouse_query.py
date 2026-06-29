@@ -15,6 +15,8 @@ from src.db.clickhouse.query import (
     count_yield_curve_fits,
     get_yield_curve_bonds_paginated,
     count_yield_curve_bonds,
+    get_yield_spread_intraday,
+    get_yield_spread_daily,
 )
 
 
@@ -222,3 +224,79 @@ class TestYieldCurveBonds:
         mock_async_client.query.return_value.result_rows = []
         total = await count_yield_curve_bonds(trade_date=date(2026, 6, 16))
         assert total == 0
+
+
+class TestYieldSpreadIntraday:
+    async def test_returns_points(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [
+            (90000, "bid", 12.5),
+            (90000, "ask", 15.0),
+            (90100, "bid", 13.0),
+        ]
+        result = await get_yield_spread_intraday(
+            instrument_code="inst1", trade_date=date(2026, 6, 16), curve_side="both"
+        )
+        assert len(result) == 3
+        assert result[0] == {"trade_time": 90000, "curve_side": "bid", "spread_bps": 12.5}
+        assert result[2] == {"trade_time": 90100, "curve_side": "bid", "spread_bps": 13.0}
+
+    async def test_empty(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        result = await get_yield_spread_intraday(
+            instrument_code="inst1", trade_date=date(2026, 6, 16)
+        )
+        assert result == []
+
+    async def test_side_filter_passed(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [(90000, "ask", 5.0)]
+        await get_yield_spread_intraday(
+            instrument_code="inst1", trade_date=date(2026, 6, 16),
+            curve_side="ask", from_time=80000, to_time=100000,
+        )
+        params = mock_async_client.query.call_args[1]["parameters"]
+        assert params["side"] == "ask"
+        assert params["ft"] == 80000
+        assert params["tt"] == 100000
+
+    async def test_both_omits_side(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        await get_yield_spread_intraday(
+            instrument_code="inst1", trade_date=date(2026, 6, 16), curve_side="both"
+        )
+        params = mock_async_client.query.call_args[1]["parameters"]
+        assert "side" not in params
+
+
+class TestYieldSpreadDaily:
+    async def test_returns_points(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = [
+            (date(2026, 6, 16), "bid", 10.0),
+            (date(2026, 6, 17), "bid", 11.0),
+        ]
+        result = await get_yield_spread_daily(
+            instrument_code="inst1",
+            from_date=date(2026, 6, 16),
+            to_date=date(2026, 6, 17),
+        )
+        assert len(result) == 2
+        assert result[0] == {"trade_date": date(2026, 6, 16), "curve_side": "bid", "spread_bps": 10.0}
+
+    async def test_empty(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        result = await get_yield_spread_daily(
+            instrument_code="inst1",
+            from_date=date(2026, 6, 16),
+            to_date=date(2026, 6, 17),
+        )
+        assert result == []
+
+    async def test_date_params(self, mock_async_client: AsyncMock) -> None:
+        mock_async_client.query.return_value.result_rows = []
+        await get_yield_spread_daily(
+            instrument_code="inst1",
+            from_date=date(2026, 6, 1),
+            to_date=date(2026, 6, 30),
+        )
+        params = mock_async_client.query.call_args[1]["parameters"]
+        assert params["fd"] == date(2026, 6, 1)
+        assert params["td"] == date(2026, 6, 30)
