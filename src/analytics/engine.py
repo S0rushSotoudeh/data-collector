@@ -1,4 +1,5 @@
 import asyncio
+import math
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -111,34 +112,67 @@ async def _load_order_book(
     return parsed_rows
 
 
-def _bonds_for_side(
+def _finite_yield(price: Any, ttm: float) -> float | None:
+    """Yield for a (price, ttm) pair, or None if it is not usable."""
+    if price is None or price <= 0 or ttm <= 0:
+        return None
+    ytm = yield_from_price(price, FACE_VALUE, ttm)
+    if not math.isfinite(ytm):
+        return None
+    return ytm
+
+
+def _bonds_for_bucket(
     bond_map: dict[str, dict[str, Any]],
     state: dict[str, dict[str, Any]],
-    side: str,
-) -> list[dict[str, Any]]:
-    price_key = f"{side}_price"
-    vol_key = f"{side}_volume"
-    out: list[dict[str, Any]] = []
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build (bid_bonds, ask_bonds) for a single snapshot.
+
+    A bond is admitted to the curve only when it has a two-sided quote
+    (both bid_volume > 0 AND ask_volume > 0). This keeps the bid and ask
+    curves on the same liquid universe and prevents orphan points that
+    exist on one side only (a bid with no ask volume, or vice versa).
+
+    Each admitted bond then contributes one point to each side, priced off
+    its respective side price.
+    """
+    bid_bonds: list[dict[str, Any]] = []
+    ask_bonds: list[dict[str, Any]] = []
     for code, info in bond_map.items():
         snap = state.get(code)
-        if not snap or snap[vol_key] <= 0:
+        if not snap:
+            continue
+        if snap["bid_volume"] <= 0 or snap["ask_volume"] <= 0:
             continue
         ttm = info["ttm"]
         if ttm < MIN_TTM_YEARS:
             continue
-        price = snap[price_key]
-        ytm = yield_from_price(price, FACE_VALUE, ttm)
-        out.append(
+        bid_ytm = _finite_yield(snap["bid_price"], ttm)
+        ask_ytm = _finite_yield(snap["ask_price"], ttm)
+        if bid_ytm is None or ask_ytm is None:
+            continue
+        symbol = info["symbol"]
+        bid_bonds.append(
             {
                 "code": code,
-                "symbol": info["symbol"],
+                "symbol": symbol,
                 "ttm": ttm,
-                "price": price,
-                "volume": snap[vol_key],
-                "yield": ytm,
+                "price": snap["bid_price"],
+                "volume": snap["bid_volume"],
+                "yield": bid_ytm,
             }
         )
-    return out
+        ask_bonds.append(
+            {
+                "code": code,
+                "symbol": symbol,
+                "ttm": ttm,
+                "price": snap["ask_price"],
+                "volume": snap["ask_volume"],
+                "yield": ask_ytm,
+            }
+        )
+    return bid_bonds, ask_bonds
 
 
 def _bucket_and_fit(
@@ -181,8 +215,7 @@ def _bucket_and_fit(
         if not state:
             continue
 
-        bid_bonds = _bonds_for_side(bond_map, state, "bid")
-        ask_bonds = _bonds_for_side(bond_map, state, "ask")
+        bid_bonds, ask_bonds = _bonds_for_bucket(bond_map, state)
 
         now_ts = datetime.now(timezone.utc)
 

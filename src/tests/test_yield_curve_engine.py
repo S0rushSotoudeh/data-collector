@@ -183,6 +183,49 @@ async def test_short_ttm_bond_excluded_from_fit():
 
 
 @pytest.mark.asyncio
+async def test_one_sided_quote_bond_excluded():
+    # A bond quoted on one side only (bid volume but no ask volume) is not a
+    # two-sided market and must not appear on either curve.
+    bonds = _bonds()
+    prices = _prices()
+    # B2 has only a bid (ask_volume = 0) -> dropped from both sides.
+    order_book_rows = []
+    for code, p in prices.items():
+        ask_vol = 0 if code == "B2" else 100
+        order_book_rows.append((code, 90000, p, 100, p, ask_vol))
+
+    ch = AsyncMock()
+
+    def _query(sql, parameters=None, **kwargs):
+        result = MagicMock()
+        if "DISTINCT instrument_code" in sql:
+            result.result_rows = [(c,) for c in prices]
+        else:
+            result.result_rows = order_book_rows
+        return result
+
+    ch.query = AsyncMock(side_effect=_query)
+    session_factory = _build_session_mock(bonds)
+    insert_fits = MagicMock()
+    insert_bonds = MagicMock()
+
+    with (
+        patch("src.analytics.engine.get_async_client", AsyncMock(return_value=ch)),
+        patch("src.analytics.engine.SessionLocal", session_factory),
+        patch("src.analytics.engine.insert_yield_curve_fits", insert_fits),
+        patch("src.analytics.engine.insert_yield_curve_bonds", insert_bonds),
+    ):
+        result = await compute_curve_for_date(TRADE_DATE.isoformat())
+
+    assert "error" not in result
+    for r in insert_fits.call_args.args[0]:
+        assert r["n_bonds"] == 4  # 5 in universe, one-sided B2 excluded
+        assert r["n_bonds_total"] == 5
+    bond_rows = insert_bonds.call_args.args[0]
+    assert all(r["instrument_code"] != "B2" for r in bond_rows)
+
+
+@pytest.mark.asyncio
 async def test_compute_curve_too_few_bonds():
     ch = _build_ch_mock()
     insert_fits = MagicMock()
