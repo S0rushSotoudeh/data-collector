@@ -101,7 +101,7 @@ class TsetmcClient:
         self, ins_code: str, trade_date: date
     ) -> list[TradeEntry]:
         date_str = trade_date.strftime("%Y%m%d")
-        data = await self._request(f"/Trade/GetTradeHistory/{ins_code}/{date_str}/true")
+        data = await self._request(f"/Trade/GetTradeHistory/{ins_code}/{date_str}/false")
         if data is None:
             return []
         raw_list = data.get("tradeHistory") or []
