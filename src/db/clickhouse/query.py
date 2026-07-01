@@ -608,3 +608,62 @@ async def count_yield_curve_bonds(
     q = f"SELECT count() FROM `{YIELD_CURVE_BONDS_TABLE}` FINAL {where}"
     rows = (await client.query(q, parameters=params)).result_rows
     return int(rows[0][0]) if rows else 0
+
+
+async def get_bond_trades_intraday(
+    instrument_code: str,
+    trade_date: date,
+    from_time: int | None = None,
+    to_time: int | None = None,
+    limit: int = 2000,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses = [
+        "instrument_code = {code:String}",
+        "trade_date = {dt:Date}",
+        "is_canceled = 0",
+    ]
+    params: dict[str, Any] = {"code": instrument_code, "dt": trade_date, "lim": limit}
+    if from_time is not None:
+        where_clauses.append("trade_time >= {ft:UInt32}")
+        params["ft"] = from_time
+    if to_time is not None:
+        where_clauses.append("trade_time <= {tt:UInt32}")
+        params["tt"] = to_time
+    where = " AND ".join(where_clauses)
+    q = (
+        f"SELECT trade_time, price, value "
+        f"FROM `{TRADES_TABLE}` FINAL "
+        f"WHERE {where} "
+        f"ORDER BY trade_time ASC, trade_id ASC "
+        f"LIMIT {{lim:UInt32}}"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    result: list[dict[str, Any]] = []
+    for r in rows:
+        result.append({
+            "trade_time": int(r[0]),
+            "price": price_from_storage(int(r[1])),
+            "value": price_from_storage(int(r[2])),
+        })
+    return result
+
+
+async def get_bond_trades_daily(
+    instrument_code: str,
+    from_date: date,
+    to_date: date,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    q = (
+        f"SELECT trade_date, sum(value) AS val "
+        f"FROM `{TRADES_TABLE}` FINAL "
+        f"WHERE instrument_code = {{code:String}} "
+        f"  AND trade_date BETWEEN {{fd:Date}} AND {{td:Date}} "
+        f"  AND is_canceled = 0 "
+        f"GROUP BY trade_date "
+        f"ORDER BY trade_date ASC"
+    )
+    params = {"code": instrument_code, "fd": from_date, "td": to_date}
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [{"trade_date": r[0], "value": price_from_storage(int(r[1]))} for r in rows]

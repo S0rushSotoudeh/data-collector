@@ -8,6 +8,7 @@ from src.admin.auth import BasicAuthBackend
 from src.routes.admin_tasks import router as admin_tasks_router
 from src.routes.yield_curve import router as yield_curve_router
 from src.routes.yield_spread import router as yield_spread_router
+from src.routes.bond_trades_values import router as bond_trades_values_router
 
 _SECRET_KEY = os.environ["SECRET_KEY"]
 
@@ -26,6 +27,7 @@ create_admin(app, _auth_backend)
 app.include_router(admin_tasks_router, prefix="")
 app.include_router(yield_curve_router, prefix="")
 app.include_router(yield_spread_router, prefix="")
+app.include_router(bond_trades_values_router, prefix="")
 
 
 @app.get("/")

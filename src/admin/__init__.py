@@ -2,6 +2,7 @@ from sqladmin import Admin
 
 from src.admin.auth import BasicAuthBackend
 from src.admin.bond_views import BondInstrumentAdmin
+from src.admin.bond_trades_values_views import BondTradesValuesChartView
 from src.admin.yield_chart_views import YieldCurveChartView, YieldSpreadChartView
 from src.admin.clickhouse_views import BondOrderBookView, BondTradesView
 from src.admin.task_views import CeleryTasksView
@@ -26,5 +27,6 @@ def create_admin(
     admin.add_view(YieldCurveBondsView)
     admin.add_view(YieldCurveChartView)
     admin.add_view(YieldSpreadChartView)
+    admin.add_view(BondTradesValuesChartView)
     admin.add_view(CeleryTasksView)
     return admin
