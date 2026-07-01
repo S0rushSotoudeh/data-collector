@@ -667,3 +667,18 @@ async def get_bond_trades_daily(
     params = {"code": instrument_code, "fd": from_date, "td": to_date}
     rows = (await client.query(q, parameters=params)).result_rows
     return [{"trade_date": r[0], "value": price_from_storage(int(r[1]))} for r in rows]
+
+
+async def get_bond_trades_ranking(from_date: date, to_date: date) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    q = (
+        f"SELECT instrument_code, sum(value) AS val "
+        f"FROM `{TRADES_TABLE}` FINAL "
+        f"WHERE trade_date BETWEEN {{fd:Date}} AND {{td:Date}} "
+        f"  AND is_canceled = 0 "
+        f"GROUP BY instrument_code "
+        f"ORDER BY val DESC"
+    )
+    params = {"fd": from_date, "td": to_date}
+    rows = (await client.query(q, parameters=params)).result_rows
+    return [{"instrument_code": r[0], "value": price_from_storage(int(r[1]))} for r in rows]

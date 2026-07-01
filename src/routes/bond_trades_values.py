@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from src.db.clickhouse.query import (
     get_bond_trades_daily,
     get_bond_trades_intraday,
+    get_bond_trades_ranking,
 )
 from src.routes.yield_curve import _validate_hhmmss
 
@@ -62,3 +63,12 @@ async def api_bond_trades_daily(
         "to": str(to),
         "days": days,
     }
+
+
+@router.get("/bond-trades-values/ranking")
+async def api_bond_trades_ranking(
+    frm: date = Query(..., alias="from", description="From date"),
+    to: date = Query(..., description="To date"),
+):
+    rows = await get_bond_trades_ranking(from_date=frm, to_date=to)
+    return {"from": str(frm), "to": str(to), "rows": rows}
