@@ -84,8 +84,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 5
-        assert applied == [1, 2, 3, 4, 5]
+        assert len(new_versions) == 7
+        assert applied == [1, 2, 3, 4, 5, 6, 7]
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -102,12 +102,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == [3, 4, 5]
-        assert applied == [3, 4, 5]
+        assert new_versions == [3, 4, 5, 6, 7]
+        assert applied == [3, 4, 5, 6, 7]
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -120,7 +120,7 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 5
+        assert len(new_versions) == 7
 
 
 class TestDowngrade:
@@ -184,11 +184,13 @@ class TestPending:
         assert 3 in p
         assert 4 in p
         assert 5 in p
+        assert 6 in p
+        assert 7 in p
         assert 1 not in p
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
 
         p = pending(client)
         assert p == []
@@ -197,7 +199,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
 
         assert check(client) is True
 

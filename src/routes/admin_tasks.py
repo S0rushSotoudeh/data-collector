@@ -7,9 +7,12 @@ from starlette.requests import Request
 
 from src.celery_app import celery
 from src.tasks import (
+    backfill_option_order_books_task,
+    backfill_option_trades_task,
     backfill_order_books_task,
     backfill_trades_task,
     sync_bond_instruments,
+    sync_option_instruments,
 )
 
 router = APIRouter(prefix="/admin/tasks", tags=["admin-tasks"])
@@ -62,6 +65,33 @@ async def api_backfill_order_books(request: Request, body: BackfillRequest):
 async def api_backfill_trades(request: Request, body: BackfillRequest):
     await _require_admin(request)
     task = backfill_trades_task.delay(
+        start_date_str=body.start_date.isoformat(),
+        end_date_str=body.end_date.isoformat(),
+    )
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/sync-option-instruments", response_model=TaskSubmittedResponse)
+async def api_sync_option_instruments(request: Request):
+    await _require_admin(request)
+    task = sync_option_instruments.delay()
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/backfill-option-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_option_order_books(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    task = backfill_option_order_books_task.delay(
+        start_date_str=body.start_date.isoformat(),
+        end_date_str=body.end_date.isoformat(),
+    )
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/backfill-option-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_option_trades(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    task = backfill_option_trades_task.delay(
         start_date_str=body.start_date.isoformat(),
         end_date_str=body.end_date.isoformat(),
     )

@@ -7,6 +7,10 @@ python manage.py shell                    # Open interactive Python shell
     python manage.py sync-instruments         # Celery Task 1: sync bond instruments to PostgreSQL
     python manage.py backfill-order-books     # Celery Task 3: backfill order books for a date range
     python manage.py backfill-trades          # Celery Task 4: backfill trades for a date range
+    python manage.py option-sync              # Sync options + backfill last 7 days of order books + trades
+    python manage.py sync-option-instruments  # Sync option instruments from TSETMC to PostgreSQL
+    python manage.py backfill-option-order-books  # Backfill option order books for a date range
+    python manage.py backfill-option-trades       # Backfill option trades for a date range
     python manage.py clickhouse migrate       # Apply all pending ClickHouse migrations
     python manage.py clickhouse downgrade      # Revert last ClickHouse migration
     python manage.py clickhouse history        # Show ClickHouse migration history
@@ -35,7 +39,7 @@ def _get_db_url() -> str:
 
 def _setup_imports():
     import src.db.models
-    from src.db.models import BondInstrument
+    from src.db.models import BondInstrument, OptionInstrument
     from sqlmodel import SQLModel, Session, select
 
     engine = create_engine(_get_db_url())
@@ -48,6 +52,7 @@ def _setup_imports():
         "SQLModel": SQLModel,
         "select": select,
         "BondInstrument": BondInstrument,
+        "OptionInstrument": OptionInstrument,
     }
 
 
@@ -133,6 +138,18 @@ def main():
     trades_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
     trades_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
 
+    sub.add_parser("option-sync", help="Sync option instruments and backfill last 7 days of order books + trades")
+
+    sub.add_parser("sync-option-instruments", help="Sync all option instruments from TSETMC MarketWatch to PostgreSQL")
+
+    opt_ob_parser = sub.add_parser("backfill-option-order-books", help="Backfill option order books for a date range")
+    opt_ob_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
+    opt_ob_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
+
+    opt_tr_parser = sub.add_parser("backfill-option-trades", help="Backfill option trades for a date range")
+    opt_tr_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
+    opt_tr_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
+
     ch = sub.add_parser("clickhouse", help="ClickHouse migration management")
     ch_sub = ch.add_subparsers(dest="ch_command")
 
@@ -184,6 +201,48 @@ def main():
             )
         )
         print(f"Done. Tried: {result['total_days_tried']}, Rows: {result['total_rows']}, Errors: {len(result['errors'])}")
+        for e in result["errors"]:
+            print(f"  {e}")
+    elif args.command == "option-sync":
+        from src.collectors.option.run_sync import main
+        import asyncio
+        asyncio.run(main())
+    elif args.command == "sync-option-instruments":
+        from src.collectors.option.instrument_sync import sync_option_instruments_to_pg
+        result = asyncio.run(sync_option_instruments_to_pg())
+        print(f"Synced: {result['synced']}, Errors: {len(result['errors'])}")
+        for e in result["errors"]:
+            print(f"  {e}")
+    elif args.command == "backfill-option-order-books":
+        from src.collectors.option.order_book_fetcher import (
+            backfill_option_order_books as backfill_for_range,
+            get_option_codes_active_in_range,
+        )
+        codes = asyncio.run(get_option_codes_active_in_range(args.start, args.end))
+        print(f"Found {len(codes)} active options in range {args.start} to {args.end}")
+        result = asyncio.run(
+            backfill_for_range(
+                start_date=args.start,
+                end_date=args.end,
+                instrument_codes=codes,
+            )
+        )
+        print(f"Done. Tried: {result['total_days_tried']}, Rows: {result['total_rows']}, Errors: {len(result['errors'])}")
+        for e in result["errors"]:
+            print(f"  {e}")
+    elif args.command == "backfill-option-trades":
+        from src.collectors.option.trade_fetcher import backfill_option_trades as backfill_trades_for_range
+        from src.collectors.option.order_book_fetcher import get_option_codes_active_in_range
+        codes = asyncio.run(get_option_codes_active_in_range(args.start, args.end))
+        print(f"Found {len(codes)} active options in range {args.start} to {args.end}")
+        result = asyncio.run(
+            backfill_trades_for_range(
+                start_date=args.start,
+                end_date=args.end,
+                instrument_codes=codes,
+            )
+        )
+        print(f"Done. Tried: {result['total_days_tried']}, Rows: {result['total_rows']}, Skipped: {result['skipped']}, Errors: {len(result['errors'])}")
         for e in result["errors"]:
             print(f"  {e}")
     elif args.command == "shell":
