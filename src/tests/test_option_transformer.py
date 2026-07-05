@@ -37,9 +37,69 @@ class TestParseOptionName:
         assert strike is None
         assert expiry is None
 
+    def test_expiry_8digit_no_separators(self) -> None:
+        opt_type, underlying, strike, expiry = parse_option_name(
+            "اختیارخ موج-42000-14050629"
+        )
+        assert opt_type == "call"
+        assert underlying == "موج"
+        assert strike == Decimal("42000")
+        assert expiry == date(2026, 9, 20)
+
+    def test_expiry_2digit_year_slashes(self) -> None:
+        opt_type, underlying, strike, expiry = parse_option_name(
+            "اختیارف جوانه.ک-20000-05/04/24"
+        )
+        assert opt_type == "put"
+        assert underlying == "جوانه.ک"
+        assert strike == Decimal("20000")
+        assert expiry == date(2026, 7, 15)
+
+    def test_expiry_full_slashes(self) -> None:
+        opt_type, underlying, strike, expiry = parse_option_name(
+            "اختیارخ وبصادر-380-1405/07/22"
+        )
+        assert opt_type == "call"
+        assert underlying == "وبصادر"
+        assert strike == Decimal("380")
+        assert expiry == date(2026, 10, 14)
+
+    def test_expiry_dash_separators(self) -> None:
+        opt_type, _, strike, expiry = parse_option_name(
+            "اختیارخ اهرم-20000-1405-04-31"
+        )
+        assert opt_type == "call"
+        assert strike == Decimal("20000")
+        assert expiry == date(2026, 7, 22)
+
     def test_none(self) -> None:
         opt_type, underlying, strike, expiry = parse_option_name(None)
         assert opt_type is None
+        assert expiry is None
+
+    def test_underlying_with_space_put(self) -> None:
+        opt_type, underlying, strike, expiry = parse_option_name(
+            "اختيارف هم تراز-12000-05/08/06"
+        )
+        assert opt_type == "put"
+        assert underlying == "هم تراز"
+        assert strike == Decimal("12000")
+        assert expiry == date(2026, 10, 28)
+
+    def test_underlying_with_space_call(self) -> None:
+        opt_type, underlying, strike, expiry = parse_option_name(
+            "اختیارخ هم تراز-11000-05/06/04"
+        )
+        assert opt_type == "call"
+        assert underlying == "هم تراز"
+        assert strike == Decimal("11000")
+        assert expiry == date(2026, 8, 26)
+
+    def test_english_format_no_match(self) -> None:
+        opt_type, underlying, strike, expiry = parse_option_name("TRZZ-O-14050806")
+        assert opt_type is None
+        assert underlying is None
+        assert strike is None
         assert expiry is None
 
 

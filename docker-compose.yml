@@ -134,6 +134,7 @@ services:
     depends_on:
       redis:
         condition: service_started
+    entrypoint: ["/app/entrypoint-celery.sh"]
     command:
       [
         "celery",
@@ -151,6 +152,8 @@ services:
     container_name: dc-dbgate
     ports:
       - "3090:3000"
+    volumes:
+      - dbgate_data:/root/.local/share/dbgate
     depends_on:
       redis:
         condition: service_started
@@ -160,7 +163,8 @@ services:
         condition: service_healthy
 
     restart: unless-stopped
-    
+
 volumes:
   postgres_data2:
   clickhouse_data:
+  dbgate_data:

@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -9,6 +10,8 @@ from src.collectors.option.transformer import (
 )
 from src.db.models.option import OptionInstrument
 from src.db.session import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 async def sync_option_instruments_to_pg(
@@ -40,6 +43,16 @@ async def sync_option_instruments_to_pg(
                     full_attrs = instrument_info_to_pg_attrs(info, status=status)
                 else:
                     full_attrs = partial_attrs
+
+                if full_attrs.get("option_type") is None:
+                    raw_name = (
+                        full_attrs.get("name_fa")
+                        or full_attrs.get("name_en")
+                        or item.name
+                    )
+                    errors.append(
+                        f"{code}: failed to parse option name (name={raw_name!r})"
+                    )
 
                 _upsert_instrument(full_attrs)
                 synced += 1
