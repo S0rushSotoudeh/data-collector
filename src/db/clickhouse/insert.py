@@ -19,7 +19,7 @@ from src.db.clickhouse.schema import (
 )
 
 
-def insert_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+def insert_stock_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
     if not rows:
         return
     c = _ensure_client(client)
@@ -32,7 +32,7 @@ def insert_order_book(rows: list[dict[str, Any]], client: Client | None = None) 
     c.insert(ORDER_BOOK_TABLE, data, column_names=ORDER_BOOK_COLUMNS)
 
 
-def insert_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+def insert_stock_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
     if not rows:
         return
     c = _ensure_client(client)

@@ -11,6 +11,9 @@ YIELD_CURVE_BONDS_TABLE = "yield_curve_bonds"
 OPTION_ORDER_BOOK_TABLE = "option_order_book"
 OPTION_TRADES_TABLE = "option_trades"
 
+STOCK_ORDER_BOOK_TABLE = "stock_order_book"
+STOCK_TRADES_TABLE = "stock_trades"
+
 _ORDER_BOOK_DDL = (
     f"CREATE TABLE IF NOT EXISTS `{ORDER_BOOK_TABLE}` ("
     f"    instrument_code   String,"
@@ -93,6 +96,47 @@ _OPTION_TRADES_DDL = (
     f"TTL ingested_at + INTERVAL 1 YEAR"
 )
 
+_STOCK_ORDER_BOOK_DDL = (
+    f"CREATE TABLE IF NOT EXISTS `{STOCK_ORDER_BOOK_TABLE}` ("
+    f"    instrument_code   String,"
+    f"    trade_date        Date,"
+    f"    trade_time        UInt32,"
+    f"    ref_id            UInt64,"
+    f"    depth_level       UInt8,"
+    f"    bid_price         Int64,"
+    f"    bid_volume        UInt64,"
+    f"    bid_order_count   UInt32,"
+    f"    ask_price         Int64,"
+    f"    ask_volume        UInt64,"
+    f"    ask_order_count   UInt32,"
+    f"    data_source       LowCardinality(String),"
+    f"    ingested_at       DateTime DEFAULT now()"
+    f")"
+    f"ENGINE = ReplacingMergeTree(ingested_at) "
+    f"ORDER BY (instrument_code, trade_date, trade_time, depth_level) "
+    f"PARTITION BY toYYYYMM(trade_date) "
+    f"TTL ingested_at + INTERVAL 1 YEAR"
+)
+
+_STOCK_TRADES_DDL = (
+    f"CREATE TABLE IF NOT EXISTS `{STOCK_TRADES_TABLE}` ("
+    f"    instrument_code   String,"
+    f"    trade_date        Date,"
+    f"    trade_time        UInt32,"
+    f"    trade_id          UInt64,"
+    f"    price             Int64,"
+    f"    volume            UInt64,"
+    f"    value             Int64,"
+    f"    is_canceled       UInt8 DEFAULT 0,"
+    f"    data_source       LowCardinality(String),"
+    f"    ingested_at       DateTime DEFAULT now()"
+    f")"
+    f"ENGINE = ReplacingMergeTree(ingested_at) "
+    f"ORDER BY (instrument_code, trade_date, trade_time, trade_id) "
+    f"PARTITION BY toYYYYMM(trade_date) "
+    f"TTL ingested_at + INTERVAL 1 YEAR"
+)
+
 ORDER_BOOK_COLUMNS = [
     "instrument_code",
     "trade_date",
@@ -139,6 +183,35 @@ OPTION_ORDER_BOOK_COLUMNS = [
 ]
 
 OPTION_TRADES_COLUMNS = [
+    "instrument_code",
+    "trade_date",
+    "trade_time",
+    "trade_id",
+    "price",
+    "volume",
+    "value",
+    "is_canceled",
+    "data_source",
+    "ingested_at",
+]
+
+STOCK_ORDER_BOOK_COLUMNS = [
+    "instrument_code",
+    "trade_date",
+    "trade_time",
+    "ref_id",
+    "depth_level",
+    "bid_price",
+    "bid_volume",
+    "bid_order_count",
+    "ask_price",
+    "ask_volume",
+    "ask_order_count",
+    "data_source",
+    "ingested_at",
+]
+
+STOCK_TRADES_COLUMNS = [
     "instrument_code",
     "trade_date",
     "trade_time",
@@ -230,6 +303,8 @@ def ensure_tables(client: Client | None = None) -> None:
     c.command(_TRADES_DDL)
     c.command(_OPTION_ORDER_BOOK_DDL)
     c.command(_OPTION_TRADES_DDL)
+    c.command(_STOCK_ORDER_BOOK_DDL)
+    c.command(_STOCK_TRADES_DDL)
     c.command(_YIELD_CURVE_FITS_DDL)
     c.command(_YIELD_CURVE_BONDS_DDL)
 

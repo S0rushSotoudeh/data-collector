@@ -6,6 +6,8 @@ from src.db.clickhouse.schema import (
     TRADES_TABLE,
     OPTION_ORDER_BOOK_TABLE,
     OPTION_TRADES_TABLE,
+    STOCK_ORDER_BOOK_TABLE,
+    STOCK_TRADES_TABLE,
 )
 
 
@@ -13,20 +15,25 @@ class TestSchema:
     def test_ensure_tables_creates_both_tables(self, mock_ch_client: MagicMock) -> None:
         ensure_tables()
 
-        assert mock_ch_client.command.call_count == 7
+        # 1 health check (SELECT 1) + 8 DDL commands
+        assert mock_ch_client.command.call_count == 9
         ddl1 = mock_ch_client.command.call_args_list[1][0][0]
         ddl2 = mock_ch_client.command.call_args_list[2][0][0]
         ddl3 = mock_ch_client.command.call_args_list[3][0][0]
         ddl4 = mock_ch_client.command.call_args_list[4][0][0]
         ddl5 = mock_ch_client.command.call_args_list[5][0][0]
         ddl6 = mock_ch_client.command.call_args_list[6][0][0]
+        ddl7 = mock_ch_client.command.call_args_list[7][0][0]
+        ddl8 = mock_ch_client.command.call_args_list[8][0][0]
 
         assert ORDER_BOOK_TABLE in ddl1
         assert TRADES_TABLE in ddl2
         assert OPTION_ORDER_BOOK_TABLE in ddl3
         assert OPTION_TRADES_TABLE in ddl4
-        assert "yield_curve_fits" in ddl5
-        assert "yield_curve_bonds" in ddl6
+        assert STOCK_ORDER_BOOK_TABLE in ddl5
+        assert STOCK_TRADES_TABLE in ddl6
+        assert "yield_curve_fits" in ddl7
+        assert "yield_curve_bonds" in ddl8
 
     def test_ddl_uses_merge_tree_not_replicated(self) -> None:
         from src.db.clickhouse.schema import _ORDER_BOOK_DDL, _TRADES_DDL

@@ -3,7 +3,7 @@ from src.db.clickhouse.schema import ORDER_BOOK_COLUMNS, TRADES_COLUMNS
 from src.db.clickhouse.schema import YIELD_CURVE_FITS_TABLE, YIELD_CURVE_BONDS_TABLE
 from src.db.clickhouse.schema import YIELD_CURVE_FITS_COLUMNS, YIELD_CURVE_BONDS_COLUMNS
 from src.db.clickhouse.schema import run_migrations, downgrade_migration, migration_history, migration_pending, migration_check
-from src.db.clickhouse.insert import insert_order_book, insert_trades
+from src.db.clickhouse.insert import insert_stock_order_book as insert_order_book, insert_stock_trades as insert_trades
 from src.db.clickhouse.insert import insert_yield_curve_fits, insert_yield_curve_bonds
 from src.db.clickhouse.query import (
     get_latest_order_book,
