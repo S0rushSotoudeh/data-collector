@@ -7,13 +7,14 @@ def test_all_tasks_registered() -> None:
     ]
     expected = {
         "src.tasks.sync_bond_instruments",
-        "src.tasks.fetch_yesterday_orderbook",
-        "src.tasks.backfill_order_books_task",
-        "src.tasks.fetch_yesterday_trades",
-        "src.tasks.backfill_trades_task",
+        "src.tasks.fetch_yesterday_bond_order_book",
+        "src.tasks.backfill_bond_order_books_task",
+        "src.tasks.fetch_yesterday_bond_trades",
+        "src.tasks.backfill_bond_trades_task",
         "src.tasks.compute_yield_curve_snapshot",
         "src.tasks.backfill_yield_curves",
         "src.tasks.sync_option_instruments",
+        "src.tasks.sync_stock_instruments",
         "src.tasks.fetch_yesterday_option_orderbook",
         "src.tasks.backfill_option_order_books_task",
         "src.tasks.fetch_yesterday_option_trades",

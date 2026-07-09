@@ -7,12 +7,15 @@ from starlette.requests import Request
 
 from src.celery_app import celery
 from src.tasks import (
+    backfill_bond_order_books_task,
+    backfill_bond_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
-    backfill_order_books_task,
-    backfill_trades_task,
+    backfill_yield_curves,
+    compute_yield_curve_snapshot,
     sync_bond_instruments,
     sync_option_instruments,
+    sync_stock_instruments,
 )
 
 router = APIRouter(prefix="/admin/tasks", tags=["admin-tasks"])
@@ -44,27 +47,27 @@ class BackfillRequest(BaseModel):
     end_date: date = Field(..., description="End date (YYYY-MM-DD)")
 
 
-@router.post("/sync-instruments", response_model=TaskSubmittedResponse)
-async def api_sync_instruments(request: Request):
+@router.post("/sync-bond-instruments", response_model=TaskSubmittedResponse)
+async def api_sync_bond_instruments(request: Request):
     await _require_admin(request)
     task = sync_bond_instruments.delay()
     return TaskSubmittedResponse(task_id=task.id, status=task.status)
 
 
-@router.post("/backfill-order-books", response_model=TaskSubmittedResponse)
-async def api_backfill_order_books(request: Request, body: BackfillRequest):
+@router.post("/backfill-bond-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_bond_order_books(request: Request, body: BackfillRequest):
     await _require_admin(request)
-    task = backfill_order_books_task.delay(
+    task = backfill_bond_order_books_task.delay(
         start_date_str=body.start_date.isoformat(),
         end_date_str=body.end_date.isoformat(),
     )
     return TaskSubmittedResponse(task_id=task.id, status=task.status)
 
 
-@router.post("/backfill-trades", response_model=TaskSubmittedResponse)
-async def api_backfill_trades(request: Request, body: BackfillRequest):
+@router.post("/backfill-bond-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_bond_trades(request: Request, body: BackfillRequest):
     await _require_admin(request)
-    task = backfill_trades_task.delay(
+    task = backfill_bond_trades_task.delay(
         start_date_str=body.start_date.isoformat(),
         end_date_str=body.end_date.isoformat(),
     )
@@ -75,6 +78,13 @@ async def api_backfill_trades(request: Request, body: BackfillRequest):
 async def api_sync_option_instruments(request: Request):
     await _require_admin(request)
     task = sync_option_instruments.delay()
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/sync-stock-instruments", response_model=TaskSubmittedResponse)
+async def api_sync_stock_instruments(request: Request):
+    await _require_admin(request)
+    task = sync_stock_instruments.delay()
     return TaskSubmittedResponse(task_id=task.id, status=task.status)
 
 
@@ -92,6 +102,23 @@ async def api_backfill_option_order_books(request: Request, body: BackfillReques
 async def api_backfill_option_trades(request: Request, body: BackfillRequest):
     await _require_admin(request)
     task = backfill_option_trades_task.delay(
+        start_date_str=body.start_date.isoformat(),
+        end_date_str=body.end_date.isoformat(),
+    )
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/compute-yield-curve-snapshot", response_model=TaskSubmittedResponse)
+async def api_compute_yield_curve_snapshot(request: Request):
+    await _require_admin(request)
+    task = compute_yield_curve_snapshot.delay()
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/backfill-yield-curves", response_model=TaskSubmittedResponse)
+async def api_backfill_yield_curves(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    task = backfill_yield_curves.delay(
         start_date_str=body.start_date.isoformat(),
         end_date_str=body.end_date.isoformat(),
     )

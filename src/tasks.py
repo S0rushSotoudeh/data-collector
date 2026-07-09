@@ -27,7 +27,7 @@ def sync_bond_instruments() -> dict:
 
 
 @shared_task
-def fetch_yesterday_orderbook() -> dict:
+def fetch_yesterday_bond_order_book() -> dict:
     yesterday = date.today() - timedelta(days=1)
     return asyncio.run(
         backfill_order_books(start_date=yesterday, end_date=yesterday)
@@ -35,7 +35,7 @@ def fetch_yesterday_orderbook() -> dict:
 
 
 @shared_task
-def backfill_order_books_task(start_date_str: str, end_date_str: str) -> dict:
+def backfill_bond_order_books_task(start_date_str: str, end_date_str: str) -> dict:
     start = date.fromisoformat(start_date_str)
     end = date.fromisoformat(end_date_str)
     codes = asyncio.run(get_instrument_codes_active_in_range(start, end))
@@ -47,7 +47,7 @@ def backfill_order_books_task(start_date_str: str, end_date_str: str) -> dict:
 
 
 @shared_task
-def fetch_yesterday_trades() -> dict:
+def fetch_yesterday_bond_trades() -> dict:
     yesterday = date.today() - timedelta(days=1)
     codes = asyncio.run(get_instrument_codes_active_in_range(yesterday, yesterday))
     return asyncio.run(
@@ -56,7 +56,7 @@ def fetch_yesterday_trades() -> dict:
 
 
 @shared_task
-def backfill_trades_task(start_date_str: str, end_date_str: str) -> dict:
+def backfill_bond_trades_task(start_date_str: str, end_date_str: str) -> dict:
     start = date.fromisoformat(start_date_str)
     end = date.fromisoformat(end_date_str)
     codes = asyncio.run(get_instrument_codes_active_in_range(start, end))

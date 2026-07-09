@@ -4,9 +4,9 @@ Django-like management commands for data-collector.
 Usage:
 python manage.py shell                    # Open interactive Python shell
     python manage.py bond-sync                # Sync bonds + backfill last 7 days of order books
-    python manage.py sync-instruments         # Celery Task 1: sync bond instruments to PostgreSQL
-    python manage.py backfill-order-books     # Celery Task 3: backfill order books for a date range
-    python manage.py backfill-trades          # Celery Task 4: backfill trades for a date range
+    python manage.py sync-bond-instruments         # Sync bond instruments to PostgreSQL
+    python manage.py backfill-bond-order-books     # Backfill bond order books for a date range
+    python manage.py backfill-bond-trades          # Backfill bond trades for a date range
     python manage.py option-sync              # Sync options + backfill last 7 days of order books + trades
     python manage.py sync-option-instruments  # Sync option instruments from TSETMC to PostgreSQL
     python manage.py backfill-option-order-books  # Backfill option order books for a date range
@@ -128,13 +128,13 @@ def main():
 
     sub.add_parser("bond-sync", help="Sync bond instruments and backfill last 7 days of order books")
 
-    sub.add_parser("sync-instruments", help="Sync all bond instruments from TSETMC to PostgreSQL")
+    sub.add_parser("sync-bond-instruments", help="Sync all bond instruments from TSETMC to PostgreSQL")
 
-    backfill_parser = sub.add_parser("backfill-order-books", help="Backfill order books for a date range")
+    backfill_parser = sub.add_parser("backfill-bond-order-books", help="Backfill bond order books for a date range")
     backfill_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
     backfill_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
 
-    trades_parser = sub.add_parser("backfill-trades", help="Backfill trades for a date range")
+    trades_parser = sub.add_parser("backfill-bond-trades", help="Backfill bond trades for a date range")
     trades_parser.add_argument("--start", required=True, type=date.fromisoformat, help="Start date (YYYY-MM-DD)")
     trades_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
 
@@ -165,13 +165,13 @@ def main():
         from src.collectors.bond.run_sync import main
         import asyncio
         asyncio.run(main())
-    elif args.command == "sync-instruments":
+    elif args.command == "sync-bond-instruments":
         from src.collectors.bond.instrument_sync import sync_instruments_to_pg
         result = asyncio.run(sync_instruments_to_pg())
         print(f"Synced: {result['synced']}, Errors: {len(result['errors'])}")
         for e in result["errors"]:
             print(f"  {e}")
-    elif args.command == "backfill-order-books":
+    elif args.command == "backfill-bond-order-books":
         from src.collectors.bond.order_book_fetcher import (
             backfill_order_books as backfill_for_range,
             get_instrument_codes_active_in_range,
@@ -188,7 +188,7 @@ def main():
         print(f"Done. Tried: {result['total_days_tried']}, Rows: {result['total_rows']}, Errors: {len(result['errors'])}")
         for e in result["errors"]:
             print(f"  {e}")
-    elif args.command == "backfill-trades":
+    elif args.command == "backfill-bond-trades":
         from src.collectors.bond.trade_fetcher import backfill_trades as backfill_trades_for_range
         from src.collectors.bond.order_book_fetcher import get_instrument_codes_active_in_range
         codes = asyncio.run(get_instrument_codes_active_in_range(args.start, args.end))

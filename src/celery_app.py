@@ -25,12 +25,12 @@ celery.conf.update(
 beat_hour = int(os.getenv("BEAT_FETCH_HOUR", "1"))
 
 celery.conf.beat_schedule = {
-    "fetch-yesterday-orderbook": {
-        "task": "src.tasks.fetch_yesterday_orderbook",
+    "fetch-yesterday-bond-order-book": {
+        "task": "src.tasks.fetch_yesterday_bond_order_book",
         "schedule": crontab(hour=beat_hour, minute=0),
     },
-    "fetch-yesterday-trades": {
-        "task": "src.tasks.fetch_yesterday_trades",
+    "fetch-yesterday-bond-trades": {
+        "task": "src.tasks.fetch_yesterday_bond_trades",
         "schedule": crontab(hour=beat_hour, minute=5),
     }
 }

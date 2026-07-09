@@ -8,10 +8,10 @@ from starlette.responses import HTMLResponse
 from src.admin._render import _render
 from src.celery_app import celery
 from src.tasks import (
+    backfill_bond_order_books_task,
+    backfill_bond_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
-    backfill_order_books_task,
-    backfill_trades_task,
     backfill_yield_curves,
     compute_yield_curve_snapshot,
     sync_bond_instruments,
@@ -33,17 +33,17 @@ class CeleryTasksView(BaseView):
             form = await request.form()
             action = form.get("action")
 
-            if action == "sync-instruments":
+            if action == "sync-bond-instruments":
                 task = sync_bond_instruments.delay()
                 messages.append({
                     "type": "success",
                     "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
                 })
 
-            elif action == "backfill":
+            elif action == "backfill-bond-order-books":
                 start_date_str = form.get("start_date", "")
                 end_date_str = form.get("end_date", "")
-                task = backfill_order_books_task.delay(
+                task = backfill_bond_order_books_task.delay(
                     start_date_str=start_date_str,
                     end_date_str=end_date_str,
                 )
@@ -52,10 +52,10 @@ class CeleryTasksView(BaseView):
                     "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
                 })
 
-            elif action == "backfill-trades":
+            elif action == "backfill-bond-trades":
                 start_date_str = form.get("start_date", "")
                 end_date_str = form.get("end_date", "")
-                task = backfill_trades_task.delay(
+                task = backfill_bond_trades_task.delay(
                     start_date_str=start_date_str,
                     end_date_str=end_date_str,
                 )
