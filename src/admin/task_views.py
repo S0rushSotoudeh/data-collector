@@ -16,6 +16,7 @@ from src.tasks import (
     compute_yield_curve_snapshot,
     sync_bond_instruments,
     sync_option_instruments,
+    sync_stock_instruments,
 )
 
 
@@ -65,6 +66,13 @@ class CeleryTasksView(BaseView):
 
             elif action == "sync-option-instruments":
                 task = sync_option_instruments.delay()
+                messages.append({
+                    "type": "success",
+                    "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
+                })
+
+            elif action == "sync-stock-instruments":
+                task = sync_stock_instruments.delay()
                 messages.append({
                     "type": "success",
                     "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',

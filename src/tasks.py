@@ -18,6 +18,7 @@ from src.collectors.option.order_book_fetcher import (
     get_option_codes_active_in_range,
 )
 from src.collectors.option.trade_fetcher import backfill_option_trades
+from src.collectors.stock.instrument_sync import sync_stock_instruments_to_pg
 
 
 @shared_task
@@ -69,6 +70,11 @@ def backfill_trades_task(start_date_str: str, end_date_str: str) -> dict:
 @shared_task
 def sync_option_instruments() -> dict:
     return asyncio.run(sync_option_instruments_to_pg())
+
+
+@shared_task
+def sync_stock_instruments() -> dict:
+    return asyncio.run(sync_stock_instruments_to_pg())
 
 
 @shared_task
