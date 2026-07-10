@@ -9,6 +9,8 @@ def test_admin_task_routes_use_explicit_domains() -> None:
     assert "/admin/tasks/backfill-bond-trades" in paths
     assert "/admin/tasks/sync-option-instruments" in paths
     assert "/admin/tasks/sync-stock-instruments" in paths
+    assert "/admin/tasks/backfill-stock-order-books" in paths
+    assert "/admin/tasks/backfill-stock-trades" in paths
     assert "/admin/tasks/compute-yield-curve-snapshot" in paths
     assert "/admin/tasks/backfill-yield-curves" in paths
 

@@ -11,6 +11,8 @@ from src.tasks import (
     backfill_bond_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
+    backfill_stock_order_books_task,
+    backfill_stock_trades_task,
     backfill_yield_curves,
     compute_yield_curve_snapshot,
     sync_bond_instruments,
@@ -85,6 +87,26 @@ async def api_sync_option_instruments(request: Request):
 async def api_sync_stock_instruments(request: Request):
     await _require_admin(request)
     task = sync_stock_instruments.delay()
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/backfill-stock-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_stock_order_books(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    task = backfill_stock_order_books_task.delay(
+        start_date_str=body.start_date.isoformat(),
+        end_date_str=body.end_date.isoformat(),
+    )
+    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/backfill-stock-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_stock_trades(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    task = backfill_stock_trades_task.delay(
+        start_date_str=body.start_date.isoformat(),
+        end_date_str=body.end_date.isoformat(),
+    )
     return TaskSubmittedResponse(task_id=task.id, status=task.status)
 
 

@@ -12,6 +12,8 @@ from src.tasks import (
     backfill_bond_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
+    backfill_stock_order_books_task,
+    backfill_stock_trades_task,
     backfill_yield_curves,
     compute_yield_curve_snapshot,
     sync_bond_instruments,
@@ -64,6 +66,18 @@ class CeleryTasksView(BaseView):
                     "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
                 })
 
+            elif action == "backfill-stock-order-books":
+                start_date_str = form.get("start_date", "")
+                end_date_str = form.get("end_date", "")
+                task = backfill_stock_order_books_task.delay(
+                    start_date_str=start_date_str,
+                    end_date_str=end_date_str,
+                )
+                messages.append({
+                    "type": "success",
+                    "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
+                })
+
             elif action == "sync-option-instruments":
                 task = sync_option_instruments.delay()
                 messages.append({
@@ -94,6 +108,18 @@ class CeleryTasksView(BaseView):
                 start_date_str = form.get("start_date", "")
                 end_date_str = form.get("end_date", "")
                 task = backfill_option_trades_task.delay(
+                    start_date_str=start_date_str,
+                    end_date_str=end_date_str,
+                )
+                messages.append({
+                    "type": "success",
+                    "text": f'Task submitted: <code>{task.id}</code> (status: {task.status})',
+                })
+
+            elif action == "backfill-stock-trades":
+                start_date_str = form.get("start_date", "")
+                end_date_str = form.get("end_date", "")
+                task = backfill_stock_trades_task.delay(
                     start_date_str=start_date_str,
                     end_date_str=end_date_str,
                 )

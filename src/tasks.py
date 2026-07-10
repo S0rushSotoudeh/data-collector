@@ -19,6 +19,8 @@ from src.collectors.option.order_book_fetcher import (
 )
 from src.collectors.option.trade_fetcher import backfill_option_trades
 from src.collectors.stock.instrument_sync import sync_stock_instruments_to_pg
+from src.collectors.stock.order_book_fetcher import backfill_stock_order_books
+from src.collectors.stock.trade_fetcher import backfill_stock_trades
 
 
 @shared_task
@@ -75,6 +77,24 @@ def sync_option_instruments() -> dict:
 @shared_task
 def sync_stock_instruments() -> dict:
     return asyncio.run(sync_stock_instruments_to_pg())
+
+
+@shared_task
+def backfill_stock_order_books_task(start_date_str: str, end_date_str: str) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+    return asyncio.run(
+        backfill_stock_order_books(start_date=start, end_date=end)
+    )
+
+
+@shared_task
+def backfill_stock_trades_task(start_date_str: str, end_date_str: str) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+    return asyncio.run(
+        backfill_stock_trades(start_date=start, end_date=end)
+    )
 
 
 @shared_task

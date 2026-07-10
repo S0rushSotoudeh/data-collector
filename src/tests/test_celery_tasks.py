@@ -15,6 +15,8 @@ def test_all_tasks_registered() -> None:
         "src.tasks.backfill_yield_curves",
         "src.tasks.sync_option_instruments",
         "src.tasks.sync_stock_instruments",
+        "src.tasks.backfill_stock_order_books_task",
+        "src.tasks.backfill_stock_trades_task",
         "src.tasks.fetch_yesterday_option_orderbook",
         "src.tasks.backfill_option_order_books_task",
         "src.tasks.fetch_yesterday_option_trades",
