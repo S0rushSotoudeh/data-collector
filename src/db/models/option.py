@@ -36,6 +36,7 @@ class OptionInstrument(SQLModel, table=True):  # type: ignore
     strike_price: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
     expiry_date: date | None = Field(default=None)
     underlying_symbol: str | None = Field(default=None, max_length=50)
+    underlying_instrument_code: str | None = Field(default=None, max_length=20)
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
@@ -50,5 +51,6 @@ class OptionInstrument(SQLModel, table=True):  # type: ignore
         Index("idx_option_status", "status"),
         Index("idx_option_expiry", "expiry_date"),
         Index("idx_option_underlying", "underlying_symbol"),
+        Index("idx_option_underlying_code", "underlying_instrument_code"),
         Index("idx_option_type", "option_type"),
     )

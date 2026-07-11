@@ -7,6 +7,8 @@ class OptionInstrumentAdmin(ModelView, model=OptionInstrument):
     name = "Option Instrument"
     name_plural = "Option Instruments"
     icon = "fa-solid fa-file-contract"
+    category = "Options Market"
+    category_icon = "fa-solid fa-file-contract"
     column_list = [
         OptionInstrument.symbol,
         OptionInstrument.name_fa,

@@ -23,9 +23,11 @@ from src.tasks import (
 
 
 class CeleryTasksView(BaseView):
-    name = "Tasks"
+    name = "Background Tasks"
     identity = "celery-tasks"
     icon = "fa-solid fa-tasks"
+    category = "Operations"
+    category_icon = "fa-solid fa-gears"
 
     @expose("/celery-tasks", methods=["GET", "POST"])
     async def celery_tasks(self, request: Request) -> HTMLResponse:

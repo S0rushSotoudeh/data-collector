@@ -1,4 +1,5 @@
 from sqladmin import Admin
+from pathlib import Path
 
 from src.admin.auth import BasicAuthBackend
 from src.admin.bond_views import BondInstrumentAdmin
@@ -23,6 +24,7 @@ def create_admin(
         engine=engine,
         authentication_backend=auth_backend,
         title="Data Collector Admin",
+        templates_dir=str(Path(__file__).parent / "templates"),
     )
     admin.add_view(StockInstrumentAdmin)
     admin.add_view(BondInstrumentAdmin)

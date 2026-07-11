@@ -1,14 +1,71 @@
 from datetime import date
 from decimal import Decimal
 
-from src.collectors.option.models import BestLimitEntry, OptionInstrumentInfo, TradeEntry
+from src.collectors.option.models import (
+    BestLimitEntry,
+    MarketWatchItem,
+    OptionInstrumentInfo,
+    TradeEntry,
+)
 from src.collectors.option.transformer import (
     best_limits_to_order_book_rows,
     instrument_info_to_pg_attrs,
     market_watch_to_pg_attrs,
     parse_option_name,
+    resolve_underlying_instrument_codes,
     trades_to_trade_rows,
 )
+
+
+def _market_item(
+    code: str, instrument_id: str, symbol: str, name: str
+) -> MarketWatchItem:
+    return MarketWatchItem(code, instrument_id, symbol, name, "")
+
+
+class TestResolveUnderlyingInstrumentCodes:
+    def test_exact_normalized_symbol_match(self) -> None:
+        items = [
+            _market_item("underlying", "IRT1AHRM0001", "اهرم", "صندوق اهرمی"),
+            _market_item(
+                "option",
+                "IRO9AHRM0A01",
+                "ضهرم4023",
+                "اختيارخ اهرم-20000-1405/04/31",
+            ),
+        ]
+        assert resolve_underlying_instrument_codes(items) == {
+            "option": "underlying"
+        }
+
+    def test_issuer_token_fallback_for_symbol_alias(self) -> None:
+        items = [
+            _market_item(
+                "underlying", "IRT1JVAN0001", "جوانه كوچك", "صندوق جوانه کوچک"
+            ),
+            _market_item(
+                "option",
+                "IRO9JVAN2201",
+                "ضجوا4000",
+                "اختيارخ جوانه.ك-11000-05/04/24",
+            ),
+        ]
+        assert resolve_underlying_instrument_codes(items) == {
+            "option": "underlying"
+        }
+
+    def test_ambiguous_and_missing_matches_are_not_resolved(self) -> None:
+        items = [
+            _market_item("one", "IRT1TEST0001", "یک", "یک"),
+            _market_item("two", "IRO1TEST0001", "دو", "دو"),
+            _market_item(
+                "ambiguous", "IRO9TEST1001", "ضیک", "اختیارخ ناشناس-100-1405/04/31"
+            ),
+            _market_item(
+                "missing", "IRO9NONE1001", "ضدو", "اختیارخ مفقود-100-1405/04/31"
+            ),
+        ]
+        assert resolve_underlying_instrument_codes(items) == {}
 
 
 class TestParseOptionName:

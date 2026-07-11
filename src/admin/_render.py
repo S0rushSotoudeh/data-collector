@@ -15,7 +15,20 @@ _PAGE_SIZE = 100
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _SQLADMIN_TEMPLATE_DIR = Path(sqladmin.__file__).parent / "templates"
 _TEMPLATE_ENV = jinja2.Environment(
-    loader=jinja2.FileSystemLoader([str(_TEMPLATE_DIR), str(_SQLADMIN_TEMPLATE_DIR)]),
+    loader=jinja2.ChoiceLoader(
+        [
+            jinja2.FileSystemLoader([str(_TEMPLATE_DIR), str(_SQLADMIN_TEMPLATE_DIR)]),
+            # ``sqladmin/layout.html`` is overridden locally.  The override
+            # extends this alias to retain SQLAdmin's original layout.
+            jinja2.PrefixLoader(
+                {
+                    "sqladmin_original": jinja2.FileSystemLoader(
+                        str(_SQLADMIN_TEMPLATE_DIR / "sqladmin")
+                    )
+                }
+            ),
+        ]
+    ),
     autoescape=True,
     auto_reload=False,
 )

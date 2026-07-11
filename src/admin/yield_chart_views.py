@@ -11,9 +11,11 @@ from src.db.session import SessionLocal
 
 
 class YieldCurveChartView(BaseView):
-    name = "Yield Curve Chart"
+    name = "Bond Yield Curve"
     identity = "yield-curve-chart"
     icon = "fa-solid fa-bezier-curve"
+    category = "Bond Analytics"
+    category_icon = "fa-solid fa-chart-area"
 
     @expose("/yield-curve-chart", methods=["GET"])
     async def yield_curve_chart(self, request: Request) -> HTMLResponse:
@@ -28,9 +30,11 @@ class YieldCurveChartView(BaseView):
 
 
 class YieldSpreadChartView(BaseView):
-    name = "Yield Spread Chart"
+    name = "Bond Yield Spread"
     identity = "yield-spread-chart"
     icon = "fa-solid fa-arrows-left-right"
+    category = "Bond Analytics"
+    category_icon = "fa-solid fa-chart-area"
 
     @expose("/yield-spread-chart", methods=["GET"])
     async def yield_spread_chart(self, request: Request) -> HTMLResponse:

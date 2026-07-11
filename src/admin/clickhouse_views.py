@@ -19,9 +19,11 @@ class BondOrderBookView(ClickHouseListView):
     template_name = "order_book_list.html"
     page_title = "Bond Order Book"
     page_subtitle = "Browse and filter order book snapshots"
-    name = "Order Book"
+    name = "Bond Order Book"
     identity = "order-book"
     icon = "fa-solid fa-book"
+    category = "Bond Market"
+    category_icon = "fa-solid fa-landmark"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {
@@ -62,9 +64,11 @@ class BondTradesView(ClickHouseListView):
     template_name = "trades_list.html"
     page_title = "Bond Trades"
     page_subtitle = "Browse and filter trade records"
-    name = "Trades"
+    name = "Bond Trades"
     identity = "trades"
     icon = "fa-solid fa-chart-line"
+    category = "Bond Market"
+    category_icon = "fa-solid fa-landmark"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {

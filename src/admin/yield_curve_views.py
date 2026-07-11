@@ -18,9 +18,11 @@ class YieldCurveFitsView(ClickHouseListView):
     template_name = "yield_curve_fits_list.html"
     page_title = "Yield Curve Fits"
     page_subtitle = "Browse Nelson-Siegel fit snapshots"
-    name = "Yield Curve Fits"
+    name = "Bond Yield Curve Fits"
     identity = "yield-curve-fits"
     icon = "fa-solid fa-chart-area"
+    category = "Bond Analytics"
+    category_icon = "fa-solid fa-chart-area"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {
@@ -57,9 +59,11 @@ class YieldCurveBondsView(ClickHouseListView):
     template_name = "yield_curve_bonds_list.html"
     page_title = "Yield Curve Bonds"
     page_subtitle = "Browse per-bond yield curve points"
-    name = "Yield Curve Bonds"
+    name = "Bond Yield Curve Points"
     identity = "yield-curve-bonds"
     icon = "fa-solid fa-link"
+    category = "Bond Analytics"
+    category_icon = "fa-solid fa-chart-area"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {

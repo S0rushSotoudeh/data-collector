@@ -32,6 +32,54 @@ def is_option(item: MarketWatchItem) -> bool:
     return "اختیار" in _normalize(item.name)
 
 
+def resolve_underlying_instrument_codes(
+    market_watch: list[MarketWatchItem],
+) -> dict[str, str]:
+    """Map option ins_code to its underlying ins_code from one market snapshot.
+
+    TSETMC does not expose the relationship in GetInstrumentInfo. Prefer an
+    exact normalized symbol match and use the shared four-character issuer
+    token in instrument_id only when it identifies a single primary (0001)
+    instrument.
+    """
+    non_options = [item for item in market_watch if not is_option(item)]
+    by_symbol: dict[str, list[MarketWatchItem]] = {}
+    by_issuer: dict[str, list[MarketWatchItem]] = {}
+
+    for item in non_options:
+        symbol = _normalize(item.symbol).strip()
+        if symbol:
+            by_symbol.setdefault(symbol, []).append(item)
+        issuer = _issuer_token(item.instrument_id)
+        if issuer and item.instrument_id.endswith("0001"):
+            by_issuer.setdefault(issuer, []).append(item)
+
+    resolved: dict[str, str] = {}
+    for item in market_watch:
+        if not is_option(item):
+            continue
+        _, underlying_symbol, _, _ = parse_option_name(item.name)
+        if not underlying_symbol:
+            continue
+
+        symbol_matches = by_symbol.get(_normalize(underlying_symbol).strip(), [])
+        if len(symbol_matches) == 1:
+            resolved[item.ins_code] = symbol_matches[0].ins_code
+            continue
+
+        issuer_matches = by_issuer.get(_issuer_token(item.instrument_id) or "", [])
+        if len(issuer_matches) == 1:
+            resolved[item.ins_code] = issuer_matches[0].ins_code
+
+    return resolved
+
+
+def _issuer_token(instrument_id: str | None) -> str | None:
+    if not instrument_id or len(instrument_id) < 8:
+        return None
+    return instrument_id[4:8]
+
+
 def parse_option_name(
     name: str | None,
 ) -> tuple[str | None, str | None, Decimal | None, date | None]:

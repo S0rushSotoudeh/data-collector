@@ -1,0 +1,17 @@
+{% extends "sqladmin_original/layout.html" %}
+
+{% block head_css %}
+{{ super() }}
+<style>
+  /* Keep category links visibly nested beneath their sidebar section. */
+  #navbar-menu .dropdown-menu-column {
+    margin-left: 0.75rem;
+    padding-left: 0.5rem;
+    border-left: 2px solid rgba(255, 255, 255, 0.16);
+  }
+
+  #navbar-menu .dropdown-menu-column > .nav-link {
+    padding-left: 2.5rem !important;
+  }
+</style>
+{% endblock %}

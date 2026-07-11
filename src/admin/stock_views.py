@@ -7,6 +7,8 @@ class StockInstrumentAdmin(ModelView, model=StockInstrument):
     name = "Stock Instrument"
     name_plural = "Stock Instruments"
     icon = "fa-solid fa-chart-simple"
+    category = "Stock Market"
+    category_icon = "fa-solid fa-chart-line"
     column_list = [
         StockInstrument.instrument_code,
         StockInstrument.symbol,

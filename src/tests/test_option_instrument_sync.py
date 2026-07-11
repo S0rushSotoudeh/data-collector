@@ -21,6 +21,20 @@ class TestSyncOptionInstrumentsToPg:
     def mock_client(self) -> MagicMock:
         m = AsyncMock()
         m.get_market_watch.return_value = [
+            MarketWatchItem(
+                ins_code="underlying-ahram",
+                instrument_id="IRT1AHRM0001",
+                symbol="اهرم",
+                name="صندوق اهرمی",
+                flow_code="1",
+            ),
+            MarketWatchItem(
+                ins_code="underlying-foolad",
+                instrument_id="IRO1FOLD0001",
+                symbol="فولاد",
+                name="فولاد مبارکه اصفهان",
+                flow_code="1",
+            ),
             _make_item("3729523725493580", "اختیارخ اهرم-20000-1405/04/31"),
             _make_item("999", "اختیارف فولاد-5000-1405/04/31"),
             _make_item("888", "اسنادخزانه-م2بودجه02"),
@@ -64,6 +78,9 @@ class TestSyncOptionInstrumentsToPg:
         assert result["errors"] == []
         assert mock_session.merge.call_count == 2
         assert mock_session.commit.call_count == 2
+        merged = [call.args[0] for call in mock_session.merge.call_args_list]
+        assert merged[0].underlying_instrument_code == "underlying-ahram"
+        assert merged[1].underlying_instrument_code == "underlying-foolad"
 
     @patch("src.collectors.option.instrument_sync.SessionLocal")
     async def test_sync_with_error(

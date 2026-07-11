@@ -7,6 +7,7 @@ from src.collectors.option.market_watch_client import OptionTsetmcClient
 from src.collectors.option.transformer import (
     instrument_info_to_pg_attrs,
     market_watch_to_pg_attrs,
+    resolve_underlying_instrument_codes,
 )
 from src.db.models.option import OptionInstrument
 from src.db.session import SessionLocal
@@ -31,6 +32,7 @@ async def sync_option_instruments_to_pg(
 
         market_watch = await client.get_market_watch()
         option_items = [item for item in market_watch if is_option(item)]
+        underlying_codes = resolve_underlying_instrument_codes(market_watch)
 
         for item in option_items:
             try:
@@ -43,6 +45,8 @@ async def sync_option_instruments_to_pg(
                     full_attrs = instrument_info_to_pg_attrs(info, status=status)
                 else:
                     full_attrs = partial_attrs
+
+                full_attrs["underlying_instrument_code"] = underlying_codes.get(code)
 
                 if full_attrs.get("option_type") is None:
                     raw_name = (

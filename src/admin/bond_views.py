@@ -7,6 +7,8 @@ class BondInstrumentAdmin(ModelView, model=BondInstrument):
     name = "Bond Instrument"
     name_plural = "Bond Instruments"
     icon = "fa-solid fa-file-invoice"
+    category = "Bond Market"
+    category_icon = "fa-solid fa-landmark"
     column_list = [
         BondInstrument.instrument_code,
         BondInstrument.symbol,

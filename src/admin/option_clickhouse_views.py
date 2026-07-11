@@ -22,6 +22,8 @@ class OptionOrderBookView(ClickHouseListView):
     name = "Option Order Book"
     identity = "option-order-book"
     icon = "fa-solid fa-book-open"
+    category = "Options Market"
+    category_icon = "fa-solid fa-file-contract"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {
@@ -65,6 +67,8 @@ class OptionTradesView(ClickHouseListView):
     name = "Option Trades"
     identity = "option-trades"
     icon = "fa-solid fa-chart-line"
+    category = "Options Market"
+    category_icon = "fa-solid fa-file-contract"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {

@@ -11,9 +11,11 @@ from src.db.session import SessionLocal
 
 
 class BondTradesValuesChartView(BaseView):
-    name = "Bond Trades Values"
+    name = "Bond Trade Values"
     identity = "bond-trades-values-chart"
     icon = "fa-solid fa-chart-column"
+    category = "Bond Analytics"
+    category_icon = "fa-solid fa-chart-area"
 
     @expose("/bond-trades-values-chart", methods=["GET"])
     async def bond_trades_values_chart(self, request: Request) -> HTMLResponse:
@@ -42,6 +44,8 @@ class BondTradesRankingChartView(BaseView):
     name = "Bond Trades Ranking"
     identity = "bond-trades-ranking"
     icon = "fa-solid fa-ranking-star"
+    category = "Bond Analytics"
+    category_icon = "fa-solid fa-chart-area"
 
     @expose("/bond-trades-ranking", methods=["GET"])
     async def bond_trades_ranking(self, request: Request) -> HTMLResponse:

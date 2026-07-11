@@ -16,10 +16,19 @@ from src.db.clickhouse.schema import (
     OPTION_ORDER_BOOK_COLUMNS,
     OPTION_TRADES_TABLE,
     OPTION_TRADES_COLUMNS,
+    STOCK_ORDER_BOOK_TABLE,
+    STOCK_ORDER_BOOK_COLUMNS,
+    STOCK_TRADES_TABLE,
+    STOCK_TRADES_COLUMNS,
 )
 
 
-def insert_stock_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+def _insert_order_book(
+    rows: list[dict[str, Any]],
+    table: str,
+    columns: list[str],
+    client: Client | None = None,
+) -> None:
     if not rows:
         return
     c = _ensure_client(client)
@@ -28,11 +37,24 @@ def insert_stock_order_book(rows: list[dict[str, Any]], client: Client | None = 
             row["bid_price"] = price_to_storage(row["bid_price"])
         if "ask_price" in row:
             row["ask_price"] = price_to_storage(row["ask_price"])
-    data = [tuple(row.get(col) for col in ORDER_BOOK_COLUMNS) for row in rows]
-    c.insert(ORDER_BOOK_TABLE, data, column_names=ORDER_BOOK_COLUMNS)
+    data = [tuple(row.get(col) for col in columns) for row in rows]
+    c.insert(table, data, column_names=columns)
 
 
-def insert_stock_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+def insert_bond_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+    _insert_order_book(rows, ORDER_BOOK_TABLE, ORDER_BOOK_COLUMNS, client)
+
+
+def insert_stock_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+    _insert_order_book(rows, STOCK_ORDER_BOOK_TABLE, STOCK_ORDER_BOOK_COLUMNS, client)
+
+
+def _insert_trades(
+    rows: list[dict[str, Any]],
+    table: str,
+    columns: list[str],
+    client: Client | None = None,
+) -> None:
     if not rows:
         return
     c = _ensure_client(client)
@@ -41,8 +63,16 @@ def insert_stock_trades(rows: list[dict[str, Any]], client: Client | None = None
             row["price"] = price_to_storage(row["price"])
         if "value" in row:
             row["value"] = price_to_storage(row["value"])
-    data = [tuple(row.get(col) for col in TRADES_COLUMNS) for row in rows]
-    c.insert(TRADES_TABLE, data, column_names=TRADES_COLUMNS)
+    data = [tuple(row.get(col) for col in columns) for row in rows]
+    c.insert(table, data, column_names=columns)
+
+
+def insert_bond_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+    _insert_trades(rows, TRADES_TABLE, TRADES_COLUMNS, client)
+
+
+def insert_stock_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+    _insert_trades(rows, STOCK_TRADES_TABLE, STOCK_TRADES_COLUMNS, client)
 
 
 def insert_option_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
