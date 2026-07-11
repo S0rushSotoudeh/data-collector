@@ -1,10 +1,11 @@
 # Iran Securities Trading Fees
 
-This document summarizes the trading fees for three main categories in Iran's capital market:
+This document summarizes the trading fees for four relevant categories in Iran's capital market:
 
 1. Stocks
-2. Options
-3. Bonds, including Akhza treasury bills
+2. Equity ETFs and leveraged funds, including Ahram
+3. Options
+4. Bonds, including Akhza treasury bills
 
 All rates are stated as a percentage of the transaction value.
 
@@ -42,9 +43,32 @@ A round trip means buying and later selling the same position at the same transa
 
 **Total round-trip cost:** 1.2432%
 
+### Equity ETF: Ahram Leveraged Fund
+
+`Ahram` is the tradable leveraged equity fund managed by Charisma. For fee purposes, its exchange-traded units are treated as an **equity ETF**, not as ordinary shares.
+
+| Fee Recipient | Buy | Sell |
+|---|---:|---:|
+| Brokerage | 0.1900% | 0.1900% |
+| Tehran Stock Exchange | 0.0160% | 0.0160% |
+| Central Securities Depository | 0.0060% | 0.0090% |
+| Technology Management Company | 0.0050% | 0.0075% |
+| Securities and Exchange Organization | 0.0075% | 0.0075% |
+| Sales tax | 0.0000% | 0.0000% |
+| **Total** | **0.2245%** | **0.2300%** |
+
+**Total round-trip cost:** 0.4545%
+
+**Brokerage share of the round trip:** 0.3800%
+
+**Non-brokerage round-trip cost:** 0.0745%
+
+The non-brokerage cost is the amount that remains if the entire stated brokerage commission is effectively rebated or waived through a negotiated arrangement.
+
 ### Important Notes
 
 - The 0.5% tax applies only when selling ordinary shares.
+
 - There is no equivalent sales tax on the purchase side.
 - For stocks and preemptive rights, 30% of the brokerage commission is allocated to the Market Development Fund.
 - This allocation is deducted from the brokerage's own commission and is not an additional fee charged to the trader.
@@ -56,7 +80,36 @@ For example, from the 0.304% brokerage fee on one side of a stock trade:
 
 ---
 
-## 2. Options
+## 2. Equity ETF / Leveraged Fund — Ahram
+
+`Ahram` is the ticker of Charisma's leveraged equity fund. It is an exchange-traded fund and is **not treated as an ordinary stock** for fee purposes.
+
+Its trading fees follow the fee schedule for equity ETFs listed on the Tehran Stock Exchange.
+
+| Fee Recipient | Buy | Sell |
+|---|---:|---:|
+| Brokerage | 0.1900% | 0.1900% |
+| Tehran Stock Exchange | 0.0160% | 0.0160% |
+| Central Securities Depository | 0.0060% | 0.0090% |
+| Technology Management Company | 0.0050% | 0.0075% |
+| Securities and Exchange Organization | 0.0075% | 0.0075% |
+| Sales tax | 0.0000% | 0.0000% |
+| **Total** | **0.2245%** | **0.2300%** |
+
+**Total round-trip cost:** 0.4545%
+
+### Important Notes
+
+- Ahram is an equity ETF with leveraged fund mechanics, not an ordinary listed share.
+- The fee is calculated on the transaction value of the ETF units.
+- Unlike ordinary shares, selling Ahram does not incur the 0.5% stock-sales tax.
+- Its round-trip transaction cost is therefore substantially lower than that of ordinary shares.
+- Leverage inside the fund does not change how the exchange trading fee is calculated.
+- Bid-ask spread, market impact, tracking differences, and changes in the fund's net asset value are separate from the stated transaction fees.
+
+---
+
+## 3. Options
 
 Option trading fees are calculated on the **option premium transaction value**, not on the strike value, exercise value, or notional value of the underlying asset.
 
@@ -92,10 +145,11 @@ Option trading fees are calculated on the **option premium transaction value**, 
 - Exercise, assignment, expiration, and settlement may involve separate rules or charges.
 - Option fees are much lower than stock fees because there is no 0.5% stock-sale tax.
 - For strategy and arbitrage calculations, fees should be applied to every executed option leg separately.
+- The brokerage component is 0.08% per side, or 0.16% for a complete round trip. Any negotiated rebate affects only this component; exchange, clearing, technology, and regulator charges remain.
 
 ---
 
-## 3. Bonds and Akhza
+## 4. Bonds and Akhza
 
 Akhza instruments are Iranian government treasury bills and are treated as debt securities for trading-fee purposes.
 
@@ -118,19 +172,27 @@ The published rates are the same for debt securities traded on the Tehran Stock 
 - Buy and sell fee rates are identical.
 - For yield and arbitrage calculations, the round-trip fee should be included whenever the bond may need to be sold before maturity.
 - Holding an Akhza instrument to maturity may avoid a secondary-market sale transaction, but settlement and maturity procedures should still be checked separately.
+- The brokerage component is 0.06% per side, or 0.12% for a complete round trip. A negotiated rebate does not remove the remaining exchange, depository, and technology charges.
 
 ---
 
 ## Quick Comparison
 
-| Instrument | Buy Fee | Sell Fee | Total Round Trip | Brokerage Share (Buy + Sell) | Round Trip Excluding Brokerage |
+| Instrument | Buy Fee | Sell Fee | Total Round Trip | Brokerage Share: Buy + Sell | Cost After Full Brokerage Rebate |
 |---|---:|---:|---:|---:|---:|
 | Tehran Stock Exchange stock | 0.3712% | 0.8800% | 1.2512% | 0.6080% | 0.6432% |
 | Iran Fara Bourse stock | 0.3632% | 0.8800% | 1.2432% | 0.6080% | 0.6352% |
+| Ahram leveraged equity ETF | 0.2245% | 0.2300% | 0.4545% | 0.3800% | 0.0745% |
 | Tehran Stock Exchange option | 0.1030% | 0.1030% | 0.2060% | 0.1600% | 0.0460% |
 | Iran Fara Bourse option | 0.1020% | 0.1030% | 0.2050% | 0.1600% | 0.0450% |
 | Akhza / debt security | 0.0725% | 0.0725% | 0.1450% | 0.1200% | 0.0250% |
 
-The **Brokerage Share (Buy + Sell)** column is the portion that may be reduced or eliminated through negotiation with the broker. **Round Trip Excluding Brokerage** assumes a full waiver of that brokerage charge; exchange, regulatory, settlement, technology, and sales-tax charges still apply.
+### Interpreting the Brokerage Columns
+
+- **Brokerage Share: Buy + Sell** is the brokerage portion across a complete opening-and-closing cycle.
+- **Cost After Full Brokerage Rebate** equals total round-trip fees minus the stated brokerage component.
+- This last column is the theoretical minimum based on the published fee breakdown if the brokerage returns or waives 100% of its stated share.
+- Taxes and charges belonging to the exchange, regulator, depository, and technology operator cannot normally be removed through brokerage negotiation.
+- Actual commercial rebates depend on the broker, trading volume, client agreement, regulatory limits, and settlement method.
 
 > Rates may change after new regulatory circulars. Always verify the latest official fee schedule before using these figures in production trading or arbitrage systems.
