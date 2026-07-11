@@ -123,12 +123,14 @@ The published rates are the same for debt securities traded on the Tehran Stock 
 
 ## Quick Comparison
 
-| Instrument | Buy Fee | Sell Fee | Round Trip |
-|---|---:|---:|---:|
-| Tehran Stock Exchange stock | 0.3712% | 0.8800% | 1.2512% |
-| Iran Fara Bourse stock | 0.3632% | 0.8800% | 1.2432% |
-| Tehran Stock Exchange option | 0.1030% | 0.1030% | 0.2060% |
-| Iran Fara Bourse option | 0.1020% | 0.1030% | 0.2050% |
-| Akhza / debt security | 0.0725% | 0.0725% | 0.1450% |
+| Instrument | Buy Fee | Sell Fee | Total Round Trip | Brokerage Share (Buy + Sell) | Round Trip Excluding Brokerage |
+|---|---:|---:|---:|---:|---:|
+| Tehran Stock Exchange stock | 0.3712% | 0.8800% | 1.2512% | 0.6080% | 0.6432% |
+| Iran Fara Bourse stock | 0.3632% | 0.8800% | 1.2432% | 0.6080% | 0.6352% |
+| Tehran Stock Exchange option | 0.1030% | 0.1030% | 0.2060% | 0.1600% | 0.0460% |
+| Iran Fara Bourse option | 0.1020% | 0.1030% | 0.2050% | 0.1600% | 0.0450% |
+| Akhza / debt security | 0.0725% | 0.0725% | 0.1450% | 0.1200% | 0.0250% |
+
+The **Brokerage Share (Buy + Sell)** column is the portion that may be reduced or eliminated through negotiation with the broker. **Round Trip Excluding Brokerage** assumes a full waiver of that brokerage charge; exchange, regulatory, settlement, technology, and sales-tax charges still apply.
 
 > Rates may change after new regulatory circulars. Always verify the latest official fee schedule before using these figures in production trading or arbitrage systems.
