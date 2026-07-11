@@ -16,7 +16,7 @@ from src.db.clickhouse.query import (
 
 
 class OptionOrderBookView(ClickHouseListView):
-    template_name = "option_order_book_list.html"
+    template_name = "option/option_order_book_list.html"
     page_title = "Option Order Book"
     page_subtitle = "Browse and filter option order book snapshots"
     name = "Option Order Book"
@@ -61,7 +61,7 @@ class OptionOrderBookView(ClickHouseListView):
 
 
 class OptionTradesView(ClickHouseListView):
-    template_name = "option_trades_list.html"
+    template_name = "option/option_trades_list.html"
     page_title = "Option Trades"
     page_subtitle = "Browse and filter option trade records"
     name = "Option Trades"

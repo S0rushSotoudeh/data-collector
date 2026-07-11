@@ -190,4 +190,4 @@ class CeleryTasksView(BaseView):
             "messages": messages,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("admin_tasks.html", ctx))
+        return HTMLResponse(_render("shared/admin_tasks.html", ctx))

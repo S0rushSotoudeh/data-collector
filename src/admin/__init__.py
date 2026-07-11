@@ -2,16 +2,16 @@ from sqladmin import Admin
 from pathlib import Path
 
 from src.admin.auth import BasicAuthBackend
-from src.admin.bond_views import BondInstrumentAdmin
-from src.admin.option_views import OptionInstrumentAdmin
-from src.admin.stock_views import StockInstrumentAdmin
-from src.admin.bond_trades_values_views import BondTradesRankingChartView, BondTradesValuesChartView
-from src.admin.yield_chart_views import YieldCurveChartView, YieldSpreadChartView
-from src.admin.clickhouse_views import BondOrderBookView, BondTradesView
-from src.admin.option_clickhouse_views import OptionOrderBookView, OptionTradesView
-from src.admin.stock_clickhouse_views import StockOrderBookView, StockTradesView
+from src.admin.bonds.bond_views import BondInstrumentAdmin
+from src.admin.option.option_views import OptionInstrumentAdmin
+from src.admin.stock.stock_views import StockInstrumentAdmin
+from src.admin.bonds.bond_trades_values_views import BondTradesRankingChartView, BondTradesValuesChartView
+from src.admin.bonds.yield_chart_views import YieldCurveChartView, YieldSpreadChartView
+from src.admin.bonds.clickhouse_views import BondOrderBookView, BondTradesView
+from src.admin.option.option_clickhouse_views import OptionOrderBookView, OptionTradesView
+from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.task_views import CeleryTasksView
-from src.admin.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
+from src.admin.bonds.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
 from src.db.session import engine
 
 

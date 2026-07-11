@@ -7,23 +7,23 @@ from starlette.responses import HTMLResponse
 from src.admin._render import _parse_date, _parse_int
 from src.admin._views import ClickHouseListView
 from src.db.clickhouse import price_to_storage
-from src.db.clickhouse.query import (
-    get_order_book_paginated,
-    count_order_book,
-    get_trades_paginated,
-    count_trades,
+from src.db.clickhouse.stock import (
+    count_stock_order_book,
+    count_stock_trades,
+    get_stock_order_book_paginated,
+    get_stock_trades_paginated,
 )
 
 
-class BondOrderBookView(ClickHouseListView):
-    template_name = "order_book_list.html"
-    page_title = "Bond Order Book"
-    page_subtitle = "Browse and filter order book snapshots"
-    name = "Bond Order Book"
-    identity = "order-book"
-    icon = "fa-solid fa-book"
-    category = "Bond Market"
-    category_icon = "fa-solid fa-landmark"
+class StockOrderBookView(ClickHouseListView):
+    template_name = "stock/stock_order_book_list.html"
+    page_title = "Stock Order Book"
+    page_subtitle = "Browse and filter stock order book snapshots"
+    name = "Stock Order Book"
+    identity = "stock-order-book"
+    icon = "fa-solid fa-book-open-reader"
+    category = "Stock Market"
+    category_icon = "fa-solid fa-chart-line"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {
@@ -39,13 +39,13 @@ class BondOrderBookView(ClickHouseListView):
         trade_date = _parse_date(trade_date_str) if trade_date_str else None
         depth_level = filters["depth_level"]
         data_source = filters["data_source"] or None
-        total = await count_order_book(
+        total = await count_stock_order_book(
             instrument_code=instrument_code,
             trade_date=trade_date,
             depth_level=depth_level,
             data_source=data_source,
         )
-        rows = await get_order_book_paginated(
+        rows = await get_stock_order_book_paginated(
             instrument_code=instrument_code,
             trade_date=trade_date,
             depth_level=depth_level,
@@ -55,20 +55,20 @@ class BondOrderBookView(ClickHouseListView):
         )
         return total, rows
 
-    @expose("/order-book", methods=["GET"])
-    async def order_book_list(self, request: Request) -> HTMLResponse:
+    @expose("/stock-order-book", methods=["GET"])
+    async def stock_order_book_list(self, request: Request) -> HTMLResponse:
         return await self._list(request)
 
 
-class BondTradesView(ClickHouseListView):
-    template_name = "trades_list.html"
-    page_title = "Bond Trades"
-    page_subtitle = "Browse and filter trade records"
-    name = "Bond Trades"
-    identity = "trades"
-    icon = "fa-solid fa-chart-line"
-    category = "Bond Market"
-    category_icon = "fa-solid fa-landmark"
+class StockTradesView(ClickHouseListView):
+    template_name = "stock/stock_trades_list.html"
+    page_title = "Stock Trades"
+    page_subtitle = "Browse and filter stock trade records"
+    name = "Stock Trades"
+    identity = "stock-trades"
+    icon = "fa-solid fa-arrow-trend-up"
+    category = "Stock Market"
+    category_icon = "fa-solid fa-chart-line"
 
     def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
         return {
@@ -90,7 +90,7 @@ class BondTradesView(ClickHouseListView):
         max_price = price_to_storage(max_price_raw) if max_price_raw else None
         is_canceled = filters["is_canceled"]
         data_source = filters["data_source"] or None
-        total = await count_trades(
+        total = await count_stock_trades(
             instrument_code=instrument_code,
             trade_date=trade_date,
             min_price=min_price,
@@ -98,7 +98,7 @@ class BondTradesView(ClickHouseListView):
             is_canceled=is_canceled,
             data_source=data_source,
         )
-        rows = await get_trades_paginated(
+        rows = await get_stock_trades_paginated(
             instrument_code=instrument_code,
             trade_date=trade_date,
             min_price=min_price,
@@ -110,6 +110,6 @@ class BondTradesView(ClickHouseListView):
         )
         return total, rows
 
-    @expose("/trades", methods=["GET"])
-    async def trades_list(self, request: Request) -> HTMLResponse:
+    @expose("/stock-trades", methods=["GET"])
+    async def stock_trades_list(self, request: Request) -> HTMLResponse:
         return await self._list(request)

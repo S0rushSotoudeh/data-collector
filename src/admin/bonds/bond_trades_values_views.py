@@ -37,7 +37,7 @@ class BondTradesValuesChartView(BaseView):
             "instruments": instruments,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("bond_trades_values.html", ctx))
+        return HTMLResponse(_render("bonds/bond_trades_values.html", ctx))
 
 
 class BondTradesRankingChartView(BaseView):
@@ -67,4 +67,4 @@ class BondTradesRankingChartView(BaseView):
             "instruments": instruments,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("bond_trades_ranking.html", ctx))
+        return HTMLResponse(_render("bonds/bond_trades_ranking.html", ctx))

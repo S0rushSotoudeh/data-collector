@@ -15,7 +15,7 @@ from src.db.clickhouse.query import (
 
 
 class YieldCurveFitsView(ClickHouseListView):
-    template_name = "yield_curve_fits_list.html"
+    template_name = "bonds/yield_curve_fits_list.html"
     page_title = "Yield Curve Fits"
     page_subtitle = "Browse Nelson-Siegel fit snapshots"
     name = "Bond Yield Curve Fits"
@@ -56,7 +56,7 @@ class YieldCurveFitsView(ClickHouseListView):
 
 
 class YieldCurveBondsView(ClickHouseListView):
-    template_name = "yield_curve_bonds_list.html"
+    template_name = "bonds/yield_curve_bonds_list.html"
     page_title = "Yield Curve Bonds"
     page_subtitle = "Browse per-bond yield curve points"
     name = "Bond Yield Curve Points"

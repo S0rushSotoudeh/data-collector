@@ -26,7 +26,7 @@ class YieldCurveChartView(BaseView):
             "subtitle": "Term structure scatter + Nelson-Siegel fit",
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("yield_curve_chart.html", ctx))
+        return HTMLResponse(_render("bonds/yield_curve_chart.html", ctx))
 
 
 class YieldSpreadChartView(BaseView):
@@ -56,4 +56,4 @@ class YieldSpreadChartView(BaseView):
             "instruments": instruments,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("yield_spread_chart.html", ctx))
+        return HTMLResponse(_render("bonds/yield_spread_chart.html", ctx))
