@@ -14,6 +14,15 @@ OPTION_TRADES_TABLE = "option_trades"
 STOCK_ORDER_BOOK_TABLE = "stock_order_book"
 STOCK_TRADES_TABLE = "stock_trades"
 
+# Kept here as public schema constants while implementation lives in the
+# dedicated parity facade to avoid coupling the analytics engine to bonds.
+from src.db.clickhouse.parity import (
+    RUNS_TABLE as PARITY_ANALYSIS_RUNS_TABLE,
+    SNAPSHOTS_TABLE as PARITY_ANALYSIS_SNAPSHOTS_TABLE,
+    RUNS_DDL as _PARITY_ANALYSIS_RUNS_DDL,
+    SNAPSHOTS_DDL as _PARITY_ANALYSIS_SNAPSHOTS_DDL,
+)
+
 _ORDER_BOOK_DDL = (
     f"CREATE TABLE IF NOT EXISTS `{ORDER_BOOK_TABLE}` ("
     f"    instrument_code   String,"
@@ -307,6 +316,8 @@ def ensure_tables(client: Client | None = None) -> None:
     c.command(_STOCK_TRADES_DDL)
     c.command(_YIELD_CURVE_FITS_DDL)
     c.command(_YIELD_CURVE_BONDS_DDL)
+    c.command(_PARITY_ANALYSIS_RUNS_DDL)
+    c.command(_PARITY_ANALYSIS_SNAPSHOTS_DDL)
 
 
 def run_migrations(client: Client | None = None) -> list[int]:

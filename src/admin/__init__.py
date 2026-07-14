@@ -9,6 +9,8 @@ from src.admin.bonds.bond_trades_values_views import BondTradesRankingChartView,
 from src.admin.bonds.yield_chart_views import YieldCurveChartView, YieldSpreadChartView
 from src.admin.bonds.clickhouse_views import BondOrderBookView, BondTradesView
 from src.admin.option.option_clickhouse_views import OptionOrderBookView, OptionTradesView
+from src.admin.option.parity_views import OptionsAnalyticsView
+from src.admin.option.parity_clickhouse_views import ParityAnalysisRunsView, ParityAnalysisSnapshotsView
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.task_views import CeleryTasksView
 from src.admin.bonds.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
@@ -33,6 +35,9 @@ def create_admin(
     admin.add_view(BondTradesView)
     admin.add_view(OptionOrderBookView)
     admin.add_view(OptionTradesView)
+    admin.add_view(OptionsAnalyticsView)
+    admin.add_view(ParityAnalysisRunsView)
+    admin.add_view(ParityAnalysisSnapshotsView)
     admin.add_view(StockOrderBookView)
     admin.add_view(StockTradesView)
     admin.add_view(YieldCurveFitsView)

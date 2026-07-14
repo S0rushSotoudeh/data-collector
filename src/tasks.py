@@ -217,3 +217,19 @@ def backfill_yield_curves(self, start_date_str: str, end_date_str: str) -> dict:
         }
 
     return asyncio.run(_backfill())
+
+
+@shared_task
+def run_parity_analysis(run_id: str) -> dict:
+    """Process an immutable parity run one trading date at a time."""
+    from src.analytics.parity_engine import fail_run, process_run
+
+    try:
+        return process_run(run_id)
+    except Exception as exc:
+        logger.exception("Parity analysis run %s failed", run_id)
+        try:
+            fail_run(run_id, str(exc))
+        except Exception:
+            logger.exception("Could not mark parity run %s failed", run_id)
+        raise

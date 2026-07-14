@@ -84,8 +84,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 9
-        assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9]
+        assert len(new_versions) == 11
+        assert applied == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -102,12 +102,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == [3, 4, 5, 6, 7, 8, 9]
-        assert applied == [3, 4, 5, 6, 7, 8, 9]
+        assert new_versions == [3, 4, 5, 6, 7, 8, 9, 10, 11]
+        assert applied == [3, 4, 5, 6, 7, 8, 9, 10, 11]
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,), (11,)]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -120,7 +120,7 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 9
+        assert len(new_versions) == 11
 
 
 class TestDowngrade:
@@ -188,11 +188,12 @@ class TestPending:
         assert 7 in p
         assert 8 in p
         assert 9 in p
+        assert 10 in p
         assert 1 not in p
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,), (11,)]
 
         p = pending(client)
         assert p == []
@@ -201,7 +202,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,)]
+        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,), (8,), (9,), (10,), (11,)]
 
         assert check(client) is True
 
