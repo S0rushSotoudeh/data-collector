@@ -202,9 +202,9 @@ def process_run(run_id: str) -> dict[str, int]:
             elif (expiry_at - snapshot).total_seconds() < 86400:
                 warnings.append("less_than_one_day_to_expiry")
 
-            bid_curve = _latest_curve(curves["bid"], snapshot)
-            row.update(_curve_fields("borrowing", bid_curve, snapshot))
-            borrowing, borrowing_source = _effective_rate(config.manual_borrowing_rate, bid_curve, ttm, "borrowing", reasons, warnings, snapshot)
+            ask_curve = _latest_curve(curves["ask"], snapshot)
+            row.update(_curve_fields("borrowing", ask_curve, snapshot))
+            borrowing, borrowing_source = _effective_rate(config.manual_borrowing_rate, ask_curve, ttm, "borrowing", reasons, warnings, snapshot)
             if borrowing is not None and config.manual_borrowing_rate is None and config.borrowing_spread is not None:
                 borrowing += config.borrowing_spread; borrowing_source = "curve+spread"
             row.update(borrowing_rate=borrowing, borrowing_source=borrowing_source)

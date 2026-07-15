@@ -75,7 +75,7 @@
 
 {% endblock %}
 {% block custom_js %}
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+{% include "shared/echarts_support.html" %}
 <script>
 (function () {
   "use strict";
@@ -97,8 +97,7 @@
 
   function ensureChart() {
     if (!state.chart) {
-      state.chart = echarts.init(chartEl);
-      window.addEventListener("resize", function () { if (state.chart) state.chart.resize(); });
+      state.chart = AdminCharts.init(chartEl);
     }
     return state.chart;
   }
@@ -109,11 +108,7 @@
   }
 
   function showEmpty(msg) {
-    var chart = ensureChart();
-    chart.clear();
-    chart.setOption({
-      title: { text: msg, left: "center", top: "center", textStyle: { color: "#94a3b8", fontWeight: "normal", fontSize: 14 } }
-    });
+    AdminCharts.showEmpty(ensureChart(), msg);
   }
 
   function fmtPct(v) {
@@ -253,7 +248,7 @@
     addLine(askLine, "ask");
 
     var option = {
-      grid: { left: 70, right: 24, top: 30, bottom: 70 },
+      grid: AdminCharts.grid({ top: 30 }),
       tooltip: {
         trigger: "item",
         formatter: function (p) {
@@ -290,10 +285,7 @@
         axisLabel: { formatter: function (v) { return fmtPct(v); } },
         scale: true
       },
-      dataZoom: [
-        { type: "slider", xAxisIndex: 0, filterMode: "none", height: 18, bottom: 16 },
-        { type: "inside", xAxisIndex: 0, filterMode: "none" }
-      ],
+      dataZoom: AdminCharts.dualAxisZoom({ top: 30 }),
       series: series
     };
 

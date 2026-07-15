@@ -1,7 +1,7 @@
 {% extends "shared/admin_base.html" %}
 {% block custom_styles %}
 <style>
-.parity-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.parity-grid label{font-size:.78rem;font-weight:600}.parity-grid input,.parity-grid select{width:100%}.chart{height:330px}.small-chart{height:230px}.notice{border-left:4px solid #f59f00;background:#fff8db;padding:12px}.diag{font-size:.75rem;white-space:nowrap}.status-pill{padding:4px 9px;border-radius:10px;background:#e9ecef}@media(max-width:900px){.parity-grid{grid-template-columns:1fr 1fr}}
+.parity-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.parity-grid label{font-size:.78rem;font-weight:600}.parity-grid input,.parity-grid select{width:100%}.parity-chart{width:100%;height:330px}.parity-chart-card .card-body{padding:0}.notice{border-left:4px solid #f59f00;background:#fff8db;padding:12px}.diag{font-size:.75rem;white-space:nowrap}.status-pill{padding:4px 9px;border-radius:10px;background:#e9ecef}@media(max-width:900px){.parity-grid{grid-template-columns:1fr 1fr}}
 </style>
 {% endblock %}
 {% block content %}
@@ -25,13 +25,21 @@
 <button class="btn btn-primary mt-3" type="submit">Queue analysis</button> <span id="run-status" class="status-pill">Ready</span>
 </form></div></div>
 <div class="card mb-3"><div class="card-header d-flex justify-content-between"><b>Saved runs</b><button id="refresh-runs" class="btn btn-sm btn-outline-secondary">Refresh</button></div><div class="card-body"><select id="saved-runs" class="form-select"><option>Loading…</option></select></div></div>
-<div class="row"><div class="col-lg-4"><div class="card mb-3"><div class="card-header">Call ask maker boundary</div><div id="call-price-chart" class="small-chart"></div></div></div><div class="col-lg-4"><div class="card mb-3"><div class="card-header">Put bid maker boundary</div><div id="put-price-chart" class="small-chart"></div></div></div><div class="col-lg-4"><div class="card mb-3"><div class="card-header">Underlying bid maker boundary</div><div id="underlying-price-chart" class="small-chart"></div></div></div></div>
-<div class="row"><div class="col-lg-6"><div class="card mb-3"><div class="card-header">Net / surplus edge</div><div id="edge-chart" class="small-chart"></div></div></div><div class="col-lg-6"><div class="card mb-3"><div class="card-header">Executable capacity</div><div id="capacity-chart" class="small-chart"></div></div></div></div>
-<div class="row"><div class="col-lg-6"><div class="card mb-3"><div class="card-header">Borrowing rate</div><div id="funding-chart" class="small-chart"></div></div></div><div class="col-lg-6"><div class="card mb-3"><div class="card-header">PV(K), margin and headroom</div><div id="pv-chart" class="small-chart"></div></div></div></div>
+{% for chart_id, chart_title in [
+  ('call-price-chart', 'Call ask maker boundary'),
+  ('put-price-chart', 'Put bid maker boundary'),
+  ('underlying-price-chart', 'Underlying bid maker boundary'),
+  ('edge-chart', 'Net / surplus edge'),
+  ('capacity-chart', 'Executable capacity'),
+  ('funding-chart', 'Borrowing rate'),
+  ('pv-chart', 'PV(K), margin and headroom')
+] %}
+<div class="card mb-3 parity-chart-card"><div class="card-header">{{ chart_title }}</div><div class="card-body"><div id="{{ chart_id }}" class="parity-chart"></div></div></div>
+{% endfor %}
 <div class="card"><div class="card-header">Snapshot diagnostics</div><div class="table-responsive"><table class="table table-sm diag"><thead><tr><th>Time</th><th>Status</th><th>Call</th><th>Put</th><th>Stock</th><th>Call ask</th><th>Put bid</th><th>Underlying bid</th><th>Diagnostics</th></tr></thead><tbody id="diagnostics"></tbody></table></div></div>
 {% endblock %}
 {% block custom_js %}
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+{% include "shared/echarts_support.html" %}
 <script>
 const options={{ options|tojson }}; const $=id=>document.getElementById(id); const nullable=id=>$(id).value===''?null:Number($(id).value);
 function refreshPairs(){const u=$('underlying').value;const calls=options.filter(o=>o.underlying===u&&['call','c'].includes(o.type));$('call').innerHTML=calls.map(o=>`<option value="${o.code}">${o.symbol} — ${o.strike} / ${o.expiry}</option>`).join('');refreshPuts()}
@@ -42,14 +50,14 @@ $('run-form').onsubmit=async e=>{e.preventDefault();$('run-status').textContent=
 async function poll(task,run){const r=await fetch(`/admin/tasks/status/${task}`),x=await r.json();$('run-status').textContent=x.status;if(['SUCCESS','FAILURE'].includes(x.status)){await loadRuns();if(x.status==='SUCCESS')loadRun(run)}else setTimeout(()=>poll(task,run),2000)}
 async function loadRuns(){const r=await fetch('/api/v1/parity-analysis/runs'),x=await r.json();$('saved-runs').innerHTML='<option value="">Select a run…</option>'+x.items.map(o=>`<option value="${o.run_id}">${o.created_at} · ${o.status} · ${o.call_instrument_code}/${o.put_instrument_code} · ${o.opportunity_count} opportunities</option>`).join('')}
 $('refresh-runs').onclick=loadRuns;$('saved-runs').onchange=e=>e.target.value&&loadRun(e.target.value);
-const charts={};for(const id of ['call-price-chart','put-price-chart','underlying-price-chart','edge-chart','capacity-chart','funding-chart','pv-chart'])charts[id]=echarts.init($(id));
+const charts={};for(const id of ['call-price-chart','put-price-chart','underlying-price-chart','edge-chart','capacity-chart','funding-chart','pv-chart'])charts[id]=AdminCharts.init(id);
 const series=(name,field,rows,type='line')=>({name,type,showSymbol:false,connectNulls:false,data:rows.map(r=>[r.snapshot_time,r[field]])});
-async function loadRun(id){$('run-status').textContent='Loading snapshots…';const r=await fetch(`/api/v1/parity-analysis/runs/${id}/snapshots`),x=await r.json(),rows=x.items;const common={tooltip:{trigger:'axis'},legend:{type:'scroll'},xAxis:{type:'time'},yAxis:{type:'value'},dataZoom:[{type:'inside'},{type:'slider'}]};
+async function loadRun(id){$('run-status').textContent='Loading snapshots…';const r=await fetch(`/api/v1/parity-analysis/runs/${id}/snapshots`),x=await r.json(),rows=x.items;const common={grid:AdminCharts.grid(),tooltip:{trigger:'axis'},legend:{type:'scroll'},xAxis:{type:'time'},yAxis:{type:'value',scale:true},dataZoom:AdminCharts.dualAxisZoom()};
 const detailTooltip=params=>{const o=rows.find(v=>v.snapshot_time===params[0]?.value?.[0]);if(!o)return '';return `<b>${o.snapshot_time} · ${o.quality_status}</b><br>Borrowing ${o.borrowing_source} ${o.borrowing_rate}; PV ${o.pv_borrowing}<br>Call ask: net ${o.make_call_ask_net_edge}, capacity ${o.make_call_ask_capacity} (${o.make_call_ask_limiting_legs})<br>Put bid: net ${o.make_put_bid_net_edge}, capacity ${o.make_put_bid_capacity} (${o.make_put_bid_limiting_legs})<br>Underlying bid: net ${o.make_underlying_bid_net_edge}, capacity ${o.make_underlying_bid_capacity} (${o.make_underlying_bid_limiting_legs})`};
 const priceChart=(id,label,quote,boundary,suggested,opportunity)=>charts[id].setOption({...common,tooltip:{trigger:'axis',formatter:detailTooltip},series:[series(label,quote,rows),series('Profitable boundary',boundary,rows),series('Suggested maker price',suggested,rows),{name:'Opportunity',type:'scatter',data:rows.filter(r=>r[opportunity]).map(r=>[r.snapshot_time,r[quote]])}]});
 priceChart('call-price-chart','Call ask','call_ask','make_call_ask_profitable_boundary','make_call_ask_suggested_maker_price','make_call_ask_opportunity');priceChart('put-price-chart','Put bid','put_bid','make_put_bid_profitable_boundary','make_put_bid_suggested_maker_price','make_put_bid_opportunity');priceChart('underlying-price-chart','Underlying bid','stock_bid','make_underlying_bid_profitable_boundary','make_underlying_bid_suggested_maker_price','make_underlying_bid_opportunity');
 charts['edge-chart'].setOption({...common,series:['make_call_ask','make_put_bid','make_underlying_bid'].flatMap(s=>[series(`${s} net`,`${s}_net_edge`,rows),series(`${s} surplus`,`${s}_surplus_edge`,rows)])});charts['capacity-chart'].setOption({...common,series:['make_call_ask','make_put_bid','make_underlying_bid'].map(s=>series(s,`${s}_capacity`,rows,'bar'))});charts['funding-chart'].setOption({...common,series:[series('Borrowing','borrowing_rate',rows)]});charts['pv-chart'].setOption({...common,series:[series('PV borrowing','pv_borrowing',rows),series('Margin','required_margin',rows),series('Call ask headroom','make_call_ask_headroom',rows),series('Put bid headroom','make_put_bid_headroom',rows),series('Underlying bid headroom','make_underlying_bid_headroom',rows)]});
 $('diagnostics').innerHTML=rows.slice(-500).map(o=>`<tr><td>${o.snapshot_time}</td><td>${o.quality_status}</td><td>${o.call_bid}/${o.call_ask}</td><td>${o.put_bid}/${o.put_ask}</td><td>${o.stock_bid}/${o.stock_ask}</td><td>${o.make_call_ask_net_edge} / ${o.make_call_ask_surplus_edge}</td><td>${o.make_put_bid_net_edge} / ${o.make_put_bid_surplus_edge}</td><td>${o.make_underlying_bid_net_edge} / ${o.make_underlying_bid_surplus_edge}</td><td>${[...(o.quality_reasons||[]),...(o.warnings||[])].join(', ')}</td></tr>`).join('');$('run-status').textContent=`Loaded ${rows.length} snapshots`}
-loadRuns();window.addEventListener('resize',()=>Object.values(charts).forEach(c=>c.resize()));
+loadRuns();
 </script>
 {% endblock %}

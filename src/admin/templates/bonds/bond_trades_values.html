@@ -88,7 +88,7 @@
 
 {% endblock %}
 {% block custom_js %}
-<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+{% include "shared/echarts_support.html" %}
 <script>
 (function () {
   "use strict";
@@ -110,8 +110,7 @@
 
   function ensureChart() {
     if (!state.chart) {
-      state.chart = echarts.init(chartEl);
-      window.addEventListener("resize", function () { if (state.chart) state.chart.resize(); });
+      state.chart = AdminCharts.init(chartEl);
     }
     return state.chart;
   }
@@ -122,11 +121,7 @@
   }
 
   function showEmpty(msg) {
-    var chart = ensureChart();
-    chart.clear();
-    chart.setOption({
-      title: { text: msg, left: "center", top: "center", textStyle: { color: "#94a3b8", fontWeight: "normal", fontSize: 14 } }
-    });
+    AdminCharts.showEmpty(ensureChart(), msg);
   }
 
   function fmtNum(v, d) {
@@ -160,7 +155,7 @@
     }
 
     var option = {
-      grid: { left: 70, right: 24, top: 40, bottom: 70 },
+      grid: AdminCharts.grid(),
       tooltip: {
         trigger: "item",
         formatter: function (p) {
@@ -188,10 +183,7 @@
         name: "price",
         scale: true
       },
-      dataZoom: [
-        { type: "slider", xAxisIndex: 0, filterMode: "none", height: 18, bottom: 16 },
-        { type: "inside", xAxisIndex: 0, filterMode: "none" }
-      ],
+      dataZoom: AdminCharts.dualAxisZoom(),
       series: [{
         type: "scatter",
         data: scatterData,
@@ -216,7 +208,7 @@
     var values = days.map(function (d) { return d.value / 1e9; });
 
     var option = {
-      grid: { left: 70, right: 24, top: 40, bottom: 70 },
+      grid: AdminCharts.grid(),
       tooltip: {
         trigger: "item",
         formatter: function (p) {
@@ -234,10 +226,7 @@
         type: "value",
         name: "value (billions)"
       },
-      dataZoom: [
-        { type: "slider", xAxisIndex: 0, filterMode: "none", height: 18, bottom: 16 },
-        { type: "inside", xAxisIndex: 0, filterMode: "none" }
-      ],
+      dataZoom: AdminCharts.dualAxisZoom(),
       series: [{
         type: "bar",
         data: values,

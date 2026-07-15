@@ -159,6 +159,49 @@ def test_process_run_persists_complete_invalid_and_valid_snapshots():
     assert valid["make_call_ask_net_edge"] is not None
 
 
+def test_process_run_uses_ask_curve_for_borrowing_rate():
+    config = {
+        "underlying_instrument_code": "stock", "call_instrument_code": "call",
+        "put_instrument_code": "put", "start_date": "2026-01-01", "end_date": "2026-01-01",
+        "start_time": "09:01:00", "end_time": "09:01:00", "interval_seconds": 60,
+        "expiry_cutoff": "12:30:00", "multiplier": 100, "margin_value": 0,
+        "funding_source": "curve", "strike": 100, "expiry_date": "2026-12-31",
+    }
+    stored = SimpleNamespace(
+        column_names=["run_id", "config_json"],
+        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config))],
+    )
+    client = MagicMock()
+
+    def query(sql, parameters=None):
+        if "parity_analysis_runs" in sql:
+            return stored
+        if "yield_curve_fits" in sql:
+            return SimpleNamespace(result_rows=[
+                (90100, "bid", 0.10, 0.0, 0.0, 1.0, 0.0, 4, 1),
+                (90100, "ask", 0.20, 0.0, 0.0, 1.0, 0.0, 4, 1),
+            ])
+        quotes = {
+            "stock": [(90100, 100, 101, 1_000, 1_000)],
+            "call": [(90100, 20, 21, 10, 10)],
+            "put": [(90100, 10, 11, 10, 10)],
+        }
+        return SimpleNamespace(result_rows=quotes[parameters["code"]])
+
+    client.query.side_effect = query
+    with (
+        patch("src.analytics.parity_engine.get_client", return_value=client),
+        patch("src.analytics.parity_engine.insert_run"),
+        patch("src.analytics.parity_engine.insert_snapshots") as insert_snapshots,
+    ):
+        process_run("00000000-0000-0000-0000-000000000001")
+
+    row = insert_snapshots.call_args.args[0][0]
+    assert row["borrowing_rate"] == pytest.approx(0.20)
+    assert row["borrowing_beta0"] == pytest.approx(0.20)
+    assert row["borrowing_source"] == "curve"
+
+
 def test_config_validation_and_effective_fee_override():
     cfg = ParityRunConfig(
         underlying_instrument_code="s", call_instrument_code="c", put_instrument_code="p",
