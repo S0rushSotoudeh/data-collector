@@ -38,7 +38,6 @@ def test_parity_charts_are_full_width_and_use_shared_support():
         "underlying-price-chart",
         "ytm-chart",
         "ytm-spread-chart",
-        "capital-profit-chart",
         "capacity-chart",
     ]
 
@@ -48,6 +47,8 @@ def test_parity_charts_are_full_width_and_use_shared_support():
     assert "AdminCharts.dualAxisZoom(" in source
     for chart_id in chart_ids:
         assert chart_id in source
+    assert "capital-profit-chart" not in source
+    assert '<details class="mb-3"><summary class="btn btn-outline-secondary mb-2">Snapshot diagnostics</summary>' in source
     for text in ("Minimum YTM spread", "Investment / contract", "Profit at expiry / contract", "Legacy edge logic"):
         assert text in source
 

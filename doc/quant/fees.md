@@ -178,19 +178,20 @@ The published rates are the same for debt securities traded on the Tehran Stock 
 
 ## Quick Comparison
 
-| Instrument | Buy Fee | Sell Fee | Total Round Trip | Brokerage Share: Buy + Sell | Cost After Full Brokerage Rebate |
-|---|---:|---:|---:|---:|---:|
-| Tehran Stock Exchange stock | 0.3712% | 0.8800% | 1.2512% | 0.6080% | 0.6432% |
-| Iran Fara Bourse stock | 0.3632% | 0.8800% | 1.2432% | 0.6080% | 0.6352% |
-| Ahram leveraged equity ETF | 0.2245% | 0.2300% | 0.4545% | 0.3800% | 0.0745% |
-| Tehran Stock Exchange option | 0.1030% | 0.1030% | 0.2060% | 0.1600% | 0.0460% |
-| Iran Fara Bourse option | 0.1020% | 0.1030% | 0.2050% | 0.1600% | 0.0450% |
-| Akhza / debt security | 0.0725% | 0.0725% | 0.1450% | 0.1200% | 0.0250% |
+| Instrument | Buy Fee | Sell Fee | Buy Fee After Full Brokerage Rebate | Sell Fee After Full Brokerage Rebate | Total Round Trip | Brokerage Share: Buy + Sell | Round-Trip Cost After Full Brokerage Rebate |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Tehran Stock Exchange stock | 0.3712% | 0.8800% | 0.0672% | 0.5760% | 1.2512% | 0.6080% | 0.6432% |
+| Iran Fara Bourse stock | 0.3632% | 0.8800% | 0.0592% | 0.5760% | 1.2432% | 0.6080% | 0.6352% |
+| Ahram leveraged equity ETF | 0.2245% | 0.2300% | 0.0345% | 0.0400% | 0.4545% | 0.3800% | 0.0745% |
+| Tehran Stock Exchange option | 0.1030% | 0.1030% | 0.0230% | 0.0230% | 0.2060% | 0.1600% | 0.0460% |
+| Iran Fara Bourse option | 0.1020% | 0.1030% | 0.0220% | 0.0230% | 0.2050% | 0.1600% | 0.0450% |
+| Akhza / debt security | 0.0725% | 0.0725% | 0.0125% | 0.0125% | 0.1450% | 0.1200% | 0.0250% |
 
 ### Interpreting the Brokerage Columns
 
 - **Brokerage Share: Buy + Sell** is the brokerage portion across a complete opening-and-closing cycle.
-- **Cost After Full Brokerage Rebate** equals total round-trip fees minus the stated brokerage component.
+- **Buy/Sell Fee After Full Brokerage Rebate** equals the fee for that side minus its stated brokerage component.
+- **Round-Trip Cost After Full Brokerage Rebate** equals total round-trip fees minus the stated buy-and-sell brokerage components.
 - This last column is the theoretical minimum based on the published fee breakdown if the brokerage returns or waives 100% of its stated share.
 - Taxes and charges belonging to the exchange, regulator, depository, and technology operator cannot normally be removed through brokerage negotiation.
 - Actual commercial rebates depend on the broker, trading volume, client agreement, regulatory limits, and settlement method.

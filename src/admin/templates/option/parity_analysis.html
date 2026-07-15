@@ -32,7 +32,6 @@
 {% for chart_id, chart_title in [
   ('ytm-chart', 'Annualized YTM vs funding and target'),
   ('ytm-spread-chart', 'YTM spread over funding (basis points)'),
-  ('capital-profit-chart', 'Executable invested capital and expiry profit (IRR)'),
   ('capacity-chart', 'Executable capacity (contracts)')
 ] %}
 <div class="card mb-3 parity-chart-card"><div class="card-header">{{ chart_title }}</div><div class="card-body"><div id="{{ chart_id }}" class="parity-chart"></div></div></div>
@@ -47,7 +46,9 @@
 <div class="card mb-3 parity-chart-card"><div class="card-header">{{ chart_title }}</div><div class="card-body"><div id="{{ chart_id }}" class="parity-chart"></div></div></div>
 {% endfor %}
 </details>
-<div class="card"><div class="card-header">Snapshot diagnostics</div><div class="table-responsive"><table class="table table-sm diag"><thead><tr><th>Time</th><th>Status</th><th>Strategy</th><th>Capital / contract</th><th>Profit / contract</th><th>Return</th><th>YTM</th><th>Spread</th><th>Capacity</th><th>Opportunity</th><th>Diagnostics</th></tr></thead><tbody id="diagnostics"></tbody></table></div></div>
+<details class="mb-3"><summary class="btn btn-outline-secondary mb-2">Snapshot diagnostics</summary>
+<div class="card"><div class="table-responsive"><table class="table table-sm diag"><thead><tr><th>Time</th><th>Status</th><th>Strategy</th><th>Capital / contract</th><th>Profit / contract</th><th>Return</th><th>YTM</th><th>Spread</th><th>Capacity</th><th>Opportunity</th><th>Diagnostics</th></tr></thead><tbody id="diagnostics"></tbody></table></div></div>
+</details>
 {% endblock %}
 {% block custom_js %}
 {% include "shared/echarts_support.html" %}
@@ -64,7 +65,7 @@ $('run-form').onsubmit=async e=>{e.preventDefault();$('run-status').textContent=
 async function poll(task,run){const r=await fetch(`/admin/tasks/status/${task}`),x=await r.json();$('run-status').textContent=x.status;if(['SUCCESS','FAILURE'].includes(x.status)){await loadRuns();if(x.status==='SUCCESS')loadRun(run)}else setTimeout(()=>poll(task,run),2000)}
 async function loadRuns(){const r=await fetch('/api/v1/parity-analysis/runs'),x=await r.json();$('saved-runs').innerHTML='<option value="">Select a run…</option>'+x.items.map(o=>`<option value="${o.run_id}">${o.created_at} · ${o.calculation_version==='parity-v3'?'YTM':'Legacy'} · ${o.call_instrument_code}/${o.put_instrument_code} · ${o.opportunity_count} opportunities</option>`).join('')}
 $('refresh-runs').onclick=loadRuns;$('saved-runs').onchange=e=>e.target.value&&loadRun(e.target.value);
-const chartIds=['ytm-chart','ytm-spread-chart','capital-profit-chart','capacity-chart','call-price-chart','put-price-chart','underlying-price-chart'];const charts={};for(const id of chartIds)charts[id]=AdminCharts.init(id);
+const chartIds=['ytm-chart','ytm-spread-chart','capacity-chart','call-price-chart','put-price-chart','underlying-price-chart'];const charts={};for(const id of chartIds)charts[id]=AdminCharts.init(id);
 const series=(name,field,rows,type='line',scale=1)=>({name,type,showSymbol:false,connectNulls:false,data:rows.map(r=>[r.snapshot_time,r[field]===null||r[field]===undefined?null:Number(r[field])*scale])});
 const common=()=>({grid:AdminCharts.grid(),tooltip:{trigger:'axis'},legend:{type:'scroll'},xAxis:{type:'time'},yAxis:{type:'value',scale:true},dataZoom:AdminCharts.dualAxisZoom()});
 function renderKpis(row,isV3){if(!row||!isV3){$('strategy-kpis').innerHTML=`<tr><td colspan="12" class="text-muted text-center">${isV3?'No valid snapshots.':'Legacy edge logic — YTM metrics unavailable.'}</td></tr>`;return}$('strategy-kpis').innerHTML=strategies.map(([s,label])=>`<tr><th>${label}</th><td>${fmt(row[`${s}_maker_price`])} / ${fmt(row[`${s}_suggested_maker_price`])}</td><td>${fmt(row[`${s}_capital_per_contract`])}</td><td>${fmt(row[`${s}_expiry_profit_per_contract`])}</td><td>${pct(row[`${s}_holding_return`])}</td><td>${row[`${s}_ytm`]===null&&row[`${s}_capital_per_share`]<=0?'Opening credit':pct(row[`${s}_ytm`])}</td><td>${pct(row.borrowing_rate)}</td><td>${fmt(row[`${s}_ytm_spread_bps`])} bps</td><td>${fmt(row[`${s}_capacity`],0)}</td><td>${fmt(row[`${s}_total_capital`])}</td><td>${fmt(row[`${s}_total_expiry_profit`])}</td><td>${row[`${s}_opportunity`]?'<span class="badge bg-green-lt">Yes</span>':'No'}</td></tr>`).join('')}
@@ -72,7 +73,6 @@ function renderDiagnostics(rows,isV3){if(!isV3){$('diagnostics').innerHTML='<tr>
 async function loadRun(id){$('run-status').textContent='Loading snapshots…';const [runResponse,snapshotResponse]=await Promise.all([fetch(`/api/v1/parity-analysis/runs/${id}`),fetch(`/api/v1/parity-analysis/runs/${id}/snapshots`)]);const run=await runResponse.json(),x=await snapshotResponse.json(),rows=x.items,isV3=run.calculation_version==='parity-v3';$('legacy-notice').style.display=isV3?'none':'block';const latest=[...rows].reverse().find(r=>['valid','warning'].includes(r.quality_status));renderKpis(latest,isV3);renderDiagnostics(rows,isV3);
 charts['ytm-chart'].setOption({...common(),yAxis:{type:'value',scale:true,name:'%'},series:[...strategies.map(([s,label])=>series(`${label} YTM`,`${s}_ytm`,rows,'line',100)),series('Funding','borrowing_rate',rows,'line',100),series('Target YTM','target_ytm',rows,'line',100)]},true);
 charts['ytm-spread-chart'].setOption({...common(),yAxis:{type:'value',scale:true,name:'bps'},series:[...strategies.map(([s,label])=>series(label,`${s}_ytm_spread_bps`,rows)),{name:'Minimum spread',type:'line',showSymbol:false,data:rows.map(r=>[r.snapshot_time,run.minimum_ytm_spread_bps])}]},true);
-charts['capital-profit-chart'].setOption({...common(),yAxis:{type:'value',scale:true,name:'IRR'},series:strategies.flatMap(([s,label])=>[series(`${label} capital`,`${s}_total_capital`,rows),series(`${label} profit`,`${s}_total_expiry_profit`,rows)])},true);
 charts['capacity-chart'].setOption({...common(),series:strategies.map(([s,label])=>series(label,`${s}_capacity`,rows,'bar'))},true);
 const priceChart=(id,label,quote,strategy)=>charts[id].setOption({...common(),tooltip:{trigger:'axis'},series:[series(label,quote,rows),series(isV3?'Target-YTM boundary':'Legacy profitable boundary',isV3?`${strategy}_target_boundary`:`${strategy}_profitable_boundary`,rows),series('Suggested maker price',`${strategy}_suggested_maker_price`,rows),{name:'Opportunity',type:'scatter',data:rows.filter(r=>r[`${strategy}_opportunity`]).map(r=>[r.snapshot_time,r[quote]])}]},true);
 priceChart('call-price-chart','Call ask','call_ask','make_call_ask');priceChart('put-price-chart','Put bid','put_bid','make_put_bid');priceChart('underlying-price-chart','Underlying bid','stock_bid','make_underlying_bid');$('run-status').textContent=`Loaded ${rows.length} snapshots · ${isV3?'YTM logic':'legacy edge logic'}`}
