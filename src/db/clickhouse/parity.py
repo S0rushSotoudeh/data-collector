@@ -14,7 +14,7 @@ RUN_COLUMNS = [
     "run_id", "underlying_instrument_code", "call_instrument_code", "put_instrument_code", "strike", "expiry_date",
     "start_date", "end_date", "start_time", "end_time", "interval_seconds",
     "max_quote_age_seconds", "expiry_cutoff", "margin_value", "margin_unit",
-    "margin_per_share", "funding_source",
+    "margin_per_share", "minimum_ytm_spread_bps", "funding_source",
     "manual_borrowing_rate", "borrowing_spread", "stock_fee_category",
     "option_fee_category", "stock_buy_fee", "stock_sell_fee", "call_buy_fee",
     "call_sell_fee", "put_buy_fee", "put_sell_fee", "multiplier", "tick_size",
@@ -33,11 +33,15 @@ SNAPSHOT_COLUMNS = [
     "borrowing_curve_time", "borrowing_curve_age_seconds", "borrowing_beta0", "borrowing_beta1",
     "borrowing_beta2", "borrowing_lambda", "borrowing_converged", "borrowing_n_bonds", "borrowing_rmse",
     "stock_buy_fee", "stock_sell_fee", "call_buy_fee", "call_sell_fee", "put_buy_fee", "put_sell_fee",
-    "pv_borrowing",
+    "pv_borrowing", "target_ytm", "target_capital_per_share",
     *[f"{strategy}_{field}" for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid") for field in (
         "maker_price", "gross_edge", "opening_fee", "estimated_closing_fee", "net_edge", "surplus_edge",
         "gross_edge_per_contract", "net_edge_per_contract", "surplus_edge_per_contract", "total_value",
         "profitable_boundary", "suggested_maker_price", "headroom")],
+    *[f"{strategy}_{field}" for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid") for field in (
+        "target_boundary", "capital_per_share", "capital_per_contract", "total_capital",
+        "expiry_profit_per_share", "expiry_profit_per_contract", "total_expiry_profit",
+        "holding_return", "ytm", "ytm_spread_bps")],
     *[f"{strategy}_{field}" for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid") for field in ("opportunity", "capacity", "limiting_legs")],
     "quality_status", "quality_reasons", "warnings", "calculated_at", "calculation_version",
 ]
@@ -48,7 +52,7 @@ CREATE TABLE IF NOT EXISTS `{RUNS_TABLE}` (
  strike Float64, expiry_date Date,
  start_date Date, end_date Date, start_time String, end_time String, interval_seconds UInt16,
  max_quote_age_seconds UInt32, expiry_cutoff String, margin_value Float64, margin_unit LowCardinality(String),
- margin_per_share Float64, funding_source LowCardinality(String),
+ margin_per_share Float64, minimum_ytm_spread_bps Nullable(Float64), funding_source LowCardinality(String),
  manual_borrowing_rate Nullable(Float64), borrowing_spread Nullable(Float64),
  stock_fee_category LowCardinality(String), option_fee_category LowCardinality(String),
  stock_buy_fee Float64, stock_sell_fee Float64, call_buy_fee Float64, call_sell_fee Float64,
@@ -72,6 +76,11 @@ _QUOTE_FIELDS = """
 
 _STRATEGIES = ("make_call_ask", "make_put_bid", "make_underlying_bid")
 _STRATEGY_FLOATS = ("maker_price", "gross_edge", "opening_fee", "estimated_closing_fee", "net_edge", "surplus_edge", "gross_edge_per_contract", "net_edge_per_contract", "surplus_edge_per_contract", "total_value", "profitable_boundary", "suggested_maker_price", "headroom")
+_V3_STRATEGY_FLOATS = (
+    "target_boundary", "capital_per_share", "capital_per_contract", "total_capital",
+    "expiry_profit_per_share", "expiry_profit_per_contract", "total_expiry_profit",
+    "holding_return", "ytm", "ytm_spread_bps",
+)
 
 SNAPSHOTS_DDL = f"""
 CREATE TABLE IF NOT EXISTS `{SNAPSHOTS_TABLE}` (
@@ -85,8 +94,9 @@ CREATE TABLE IF NOT EXISTS `{SNAPSHOTS_TABLE}` (
  borrowing_converged Nullable(UInt8), borrowing_n_bonds Nullable(UInt16), borrowing_rmse Nullable(Float64),
  stock_buy_fee Float64, stock_sell_fee Float64, call_buy_fee Float64, call_sell_fee Float64,
  put_buy_fee Float64, put_sell_fee Float64,
- pv_borrowing Nullable(Float64),
+ pv_borrowing Nullable(Float64), target_ytm Nullable(Float64), target_capital_per_share Nullable(Float64),
  {', '.join(f'{s}_{f} Nullable(Float64)' for s in _STRATEGIES for f in _STRATEGY_FLOATS)},
+ {', '.join(f'{s}_{f} Nullable(Float64)' for s in _STRATEGIES for f in _V3_STRATEGY_FLOATS)},
  {', '.join(f'{s}_opportunity Nullable(UInt8), {s}_capacity Nullable(UInt64), {s}_limiting_legs Array(LowCardinality(String))' for s in _STRATEGIES)},
  quality_status LowCardinality(String), quality_reasons Array(String), warnings Array(String),
  calculated_at DateTime64(3), calculation_version LowCardinality(String)

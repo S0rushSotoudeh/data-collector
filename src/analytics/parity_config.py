@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from src.analytics.parity import FEE_PRESETS, Fees, margin_per_share
+from src.analytics.parity import FEE_PRESETS, Fees
 
 
 class ParityRunConfig(BaseModel):
@@ -21,8 +21,7 @@ class ParityRunConfig(BaseModel):
     expiry_cutoff: time = time(12, 30)
     multiplier: int = Field(..., gt=0)
     tick_size: float | None = Field(None, gt=0)
-    margin_value: float = Field(0, ge=0)
-    margin_unit: Literal["per_share", "per_contract", "percent", "basis_points"] = "per_share"
+    minimum_ytm_spread_bps: float = Field(0, ge=0)
     funding_source: Literal["curve", "manual", "mixed"] = "curve"
     manual_borrowing_rate: float | None = Field(None, ge=-1, le=5)
     borrowing_spread: float | None = Field(None, ge=-1, le=5)
@@ -56,6 +55,3 @@ class ParityRunConfig(BaseModel):
             put_buy=option["buy"] if self.put_buy_fee is None else self.put_buy_fee,
             put_sell=option["sell"] if self.put_sell_fee is None else self.put_sell_fee,
         )
-
-    def converted_margin(self, strike: float) -> float:
-        return margin_per_share(self.margin_value, self.margin_unit, strike, self.multiplier)

@@ -156,6 +156,10 @@ def _effective_rate(
 def process_run(run_id: str) -> dict[str, int]:
     client = get_client()
     stored = _run_row(client, run_id)
+    if stored.get("calculation_version") != CALCULATION_VERSION:
+        raise RuntimeError(
+            "Only parity-v3 runs can be processed; finish or cancel queued parity-v2 runs before deployment"
+        )
     config = ParityRunConfig.model_validate_json(stored["config_json"])
     _update_run(client, stored, "running", error="")
     persisted_config = json.loads(stored["config_json"])
@@ -184,7 +188,7 @@ def process_run(run_id: str) -> dict[str, int]:
                 "call_instrument_code": config.call_instrument_code, "put_instrument_code": config.put_instrument_code,
                 "strike": strike, "expiry_at": expiry_at, "ttm_years": ttm,
                 "multiplier": config.multiplier, "tick_size": config.tick_size,
-                "required_margin": config.converted_margin(strike), "calculated_at": datetime.now(TEHRAN),
+                "required_margin": 0.0, "calculated_at": datetime.now(TEHRAN),
                 "calculation_version": CALCULATION_VERSION,
                 **{f"{name}_fee": value for name, value in fees.__dict__.items()},
             }
@@ -217,7 +221,8 @@ def process_run(run_id: str) -> dict[str, int]:
                 values = calculate(
                     call=books["call"], put=books["put"], stock=books["stock"], strike=strike,
                     ttm_years=ttm, borrowing_rate=borrowing, fees=fees,
-                    required_margin=row["required_margin"], multiplier=config.multiplier, tick_size=config.tick_size,
+                    minimum_ytm_spread_bps=config.minimum_ytm_spread_bps,
+                    multiplier=config.multiplier, tick_size=config.tick_size,
                 )
                 row.update(values)
                 row["quality_status"] = "warning" if warnings else "valid"
@@ -226,6 +231,8 @@ def process_run(run_id: str) -> dict[str, int]:
                 if any(values[f"{strategy}_opportunity"] for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid")):
                     counts["opportunity_count"] += 1
             row["quality_reasons"] = reasons; row["warnings"] = warnings
+            for key in SNAPSHOT_COLUMNS:
+                row.setdefault(key, [] if key.endswith("limiting_legs") else None)
             batch.append(row); counts["snapshot_count"] += 1
             if len(batch) >= 1000:
                 insert_snapshots(batch, client); batch.clear()

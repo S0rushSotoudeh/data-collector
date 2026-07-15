@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from src.analytics.parity import (
-    Book, Fees, calculate, executable_capacity, margin_per_share, present_value,
+    CALCULATION_VERSION, Book, Fees, calculate, executable_capacity, margin_per_share, present_value,
     round_to_tick, validate_book,
 )
 from src.analytics.parity_config import ParityRunConfig
@@ -38,52 +38,74 @@ def test_continuous_discounting():
 def test_three_maker_strategies_fees_capacity_totals_and_boundaries():
     result = calculate(
         call=Book(20, 21, 8, 9), put=Book(10, 11, 7, 6),
-        stock=Book(110, 111, 650, 550), strike=100, ttm_years=0,
+        stock=Book(110, 111, 650, 550), strike=100, ttm_years=1,
         borrowing_rate=0.2,
         fees=Fees(stock_buy=.01, stock_sell=.01, call_buy=.02, call_sell=.02, put_buy=.03, put_sell=.03),
-        required_margin=1, multiplier=100, tick_size=.5,
+        minimum_ytm_spread_bps=100, multiplier=100, tick_size=.5,
     )
-    closing = 21 * .02 + 10 * .03 + 110 * .01
-    assert result["make_call_ask_gross_edge"] == -1
-    assert result["make_call_ask_estimated_closing_fee"] == pytest.approx(closing)
-    assert result["make_call_ask_net_edge"] < result["make_call_ask_gross_edge"]
-    assert result["make_call_ask_surplus_edge"] == pytest.approx(result["make_call_ask_net_edge"] - 1)
+    capital = 111 * 1.01 + 11 * 1.03 - 21 * (1 - .02)
+    assert result["make_call_ask_capital_per_share"] == pytest.approx(capital)
+    assert result["make_call_ask_capital_per_contract"] == pytest.approx(capital * 100)
+    assert result["make_call_ask_expiry_profit_per_share"] == pytest.approx(100 - capital)
+    assert result["make_call_ask_holding_return"] == pytest.approx(100 / capital - 1)
+    assert result["make_call_ask_ytm"] == pytest.approx(math.log(100 / capital))
+    assert result["make_call_ask_ytm_spread_bps"] == pytest.approx((math.log(100 / capital) - .2) * 10_000)
+    assert result["target_ytm"] == pytest.approx(.21)
+    assert result["target_capital_per_share"] == pytest.approx(100 * math.exp(-.21))
     assert result["make_call_ask_capacity"] == 5
     assert result["make_call_ask_limiting_legs"] == ["underlying"]
     assert result["make_put_bid_capacity"] == 5
     assert result["make_underlying_bid_capacity"] == 6
-    assert result["make_call_ask_total_value"] == result["make_call_ask_surplus_edge"] * 500
-    assert result["make_call_ask_suggested_maker_price"] % .5 == 0
-    assert result["make_put_bid_suggested_maker_price"] % .5 == 0
-    assert result["make_underlying_bid_suggested_maker_price"] % .5 == 0
+    assert result["make_call_ask_total_capital"] == pytest.approx(capital * 500)
+    assert result["make_call_ask_total_expiry_profit"] == pytest.approx((100 - capital) * 500)
+    suggestions = [result[f"{strategy}_suggested_maker_price"] for strategy in (
+        "make_call_ask", "make_put_bid", "make_underlying_bid"
+    )]
+    assert any(value is not None for value in suggestions)
+    assert all(value % .5 == 0 for value in suggestions if value is not None)
 
 
 def test_capacity_floors_stock_and_reports_ties():
     assert executable_capacity(5, 5, 599, 100) == (5, ["call", "put", "underlying"])
 
 
-def test_maker_boundaries_are_zero_surplus_and_one_tick_beyond_is_profitable():
-    common = dict(put=Book(10, 11, 20, 20), stock=Book(100, 101, 2_000, 2_000), strike=100,
-                  ttm_years=0, borrowing_rate=0, fees=Fees(), required_margin=1, multiplier=100, tick_size=1)
-    probe = calculate(call=Book(20, 21, 20, 20), **common)
-    call_boundary = probe["make_call_ask_profitable_boundary"]
-    at_boundary = calculate(call=Book(20, call_boundary, 20, 20), **common)
-    beyond = calculate(call=Book(20, call_boundary + 1, 20, 20), **common)
-    assert at_boundary["make_call_ask_surplus_edge"] == pytest.approx(0)
-    assert not at_boundary["make_call_ask_opportunity"]
-    assert beyond["make_call_ask_opportunity"]
+def test_maker_boundaries_hit_target_ytm_and_ticks_change_opportunity():
+    common = dict(put=Book(5, 11, 20, 20), stock=Book(100, 101, 2_000, 2_000), strike=100,
+                  ttm_years=1, borrowing_rate=.05, fees=Fees(), minimum_ytm_spread_bps=100,
+                  multiplier=100, tick_size=1)
+    probe = calculate(call=Book(10, 20, 20, 20), **common)
+    call_boundary = probe["make_call_ask_target_boundary"]
+    at_boundary = calculate(call=Book(10, call_boundary, 20, 20), **common)
+    adverse = calculate(call=Book(10, call_boundary - 1, 20, 20), **common)
+    assert at_boundary["make_call_ask_ytm"] == pytest.approx(.06)
+    assert at_boundary["make_call_ask_opportunity"]
+    assert not adverse["make_call_ask_opportunity"]
 
-    put_boundary = probe["make_put_bid_profitable_boundary"]
-    at_boundary = calculate(call=Book(20, 21, 20, 20), put=Book(put_boundary, 11, 20, 20), **{k: v for k, v in common.items() if k != "put"})
-    beyond = calculate(call=Book(20, 21, 20, 20), put=Book(put_boundary - 1, 11, 20, 20), **{k: v for k, v in common.items() if k != "put"})
-    assert at_boundary["make_put_bid_surplus_edge"] == pytest.approx(0)
-    assert beyond["make_put_bid_opportunity"]
+    put_boundary = probe["make_put_bid_target_boundary"]
+    at_boundary = calculate(call=Book(10, 20, 20, 20), put=Book(put_boundary, 11, 20, 20), **{k: v for k, v in common.items() if k != "put"})
+    adverse = calculate(call=Book(10, 20, 20, 20), put=Book(put_boundary + 1, 11, 20, 20), **{k: v for k, v in common.items() if k != "put"})
+    assert at_boundary["make_put_bid_ytm"] == pytest.approx(.06)
+    assert at_boundary["make_put_bid_opportunity"]
+    assert not adverse["make_put_bid_opportunity"]
 
-    stock_boundary = probe["make_underlying_bid_profitable_boundary"]
-    at_boundary = calculate(call=Book(20, 21, 20, 20), stock=Book(stock_boundary, 101, 2_000, 2_000), **{k: v for k, v in common.items() if k != "stock"})
-    beyond = calculate(call=Book(20, 21, 20, 20), stock=Book(stock_boundary - 1, 101, 2_000, 2_000), **{k: v for k, v in common.items() if k != "stock"})
-    assert at_boundary["make_underlying_bid_surplus_edge"] == pytest.approx(0)
-    assert beyond["make_underlying_bid_opportunity"]
+    stock_boundary = probe["make_underlying_bid_target_boundary"]
+    at_boundary = calculate(call=Book(10, 20, 20, 20), stock=Book(stock_boundary, 101, 2_000, 2_000), **{k: v for k, v in common.items() if k != "stock"})
+    adverse = calculate(call=Book(10, 20, 20, 20), stock=Book(stock_boundary + 1, 101, 2_000, 2_000), **{k: v for k, v in common.items() if k != "stock"})
+    assert at_boundary["make_underlying_bid_ytm"] == pytest.approx(.06)
+    assert at_boundary["make_underlying_bid_opportunity"]
+    assert not adverse["make_underlying_bid_opportunity"]
+
+
+def test_opening_credit_is_an_opportunity_with_undefined_ratio_metrics():
+    result = calculate(
+        call=Book(120, 121, 5, 5), put=Book(1, 2, 5, 5), stock=Book(10, 11, 500, 500),
+        strike=100, ttm_years=.25, borrowing_rate=.2, fees=Fees(),
+        minimum_ytm_spread_bps=0, multiplier=100,
+    )
+    assert result["make_call_ask_capital_per_share"] < 0
+    assert result["make_call_ask_ytm"] is None
+    assert result["make_call_ask_holding_return"] is None
+    assert result["make_call_ask_opportunity"]
 
 
 def test_directional_tick_rounding():
@@ -111,13 +133,13 @@ def test_process_run_persists_complete_invalid_and_valid_snapshots():
         "underlying_instrument_code": "stock", "call_instrument_code": "call",
         "put_instrument_code": "put", "start_date": "2026-01-01", "end_date": "2026-01-01",
         "start_time": "09:00:00", "end_time": "09:01:00", "interval_seconds": 60,
-        "expiry_cutoff": "12:30:00", "multiplier": 100, "margin_value": 0,
+        "expiry_cutoff": "12:30:00", "multiplier": 100, "minimum_ytm_spread_bps": 0,
         "funding_source": "manual", "manual_borrowing_rate": 0.1,
         "strike": 100, "expiry_date": "2026-12-31",
     }
     stored = SimpleNamespace(
-        column_names=["run_id", "config_json"],
-        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config))],
+        column_names=["run_id", "config_json", "calculation_version"],
+        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config), CALCULATION_VERSION)],
     )
     client = MagicMock()
 
@@ -156,7 +178,9 @@ def test_process_run_persists_complete_invalid_and_valid_snapshots():
     assert invalid["make_call_ask_limiting_legs"] == []
     assert invalid["make_call_ask_net_edge"] is None
     assert valid["quality_status"] == "valid"
-    assert valid["make_call_ask_net_edge"] is not None
+    assert valid["make_call_ask_capital_per_contract"] is not None
+    assert valid["make_call_ask_expiry_profit_per_contract"] is not None
+    assert valid["make_call_ask_ytm"] is not None
 
 
 def test_process_run_uses_ask_curve_for_borrowing_rate():
@@ -164,12 +188,12 @@ def test_process_run_uses_ask_curve_for_borrowing_rate():
         "underlying_instrument_code": "stock", "call_instrument_code": "call",
         "put_instrument_code": "put", "start_date": "2026-01-01", "end_date": "2026-01-01",
         "start_time": "09:01:00", "end_time": "09:01:00", "interval_seconds": 60,
-        "expiry_cutoff": "12:30:00", "multiplier": 100, "margin_value": 0,
+        "expiry_cutoff": "12:30:00", "multiplier": 100, "minimum_ytm_spread_bps": 0,
         "funding_source": "curve", "strike": 100, "expiry_date": "2026-12-31",
     }
     stored = SimpleNamespace(
-        column_names=["run_id", "config_json"],
-        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config))],
+        column_names=["run_id", "config_json", "calculation_version"],
+        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config), CALCULATION_VERSION)],
     )
     client = MagicMock()
 
@@ -221,6 +245,9 @@ def test_parity_ddl_keys_and_engines():
     assert "PARTITION BY toYYYYMM(trade_date)" in SNAPSHOTS_DDL
     assert "ORDER BY (run_id, trade_date, snapshot_time)" in SNAPSHOTS_DDL
     assert "quality_reasons Array(String)" in SNAPSHOTS_DDL
+    assert "minimum_ytm_spread_bps Nullable(Float64)" in RUNS_DDL
+    assert "make_call_ask_capital_per_contract Nullable(Float64)" in SNAPSHOTS_DDL
+    assert "make_underlying_bid_ytm_spread_bps Nullable(Float64)" in SNAPSHOTS_DDL
 
 
 async def test_admin_run_queries_are_filtered_and_paginated(mock_async_client):

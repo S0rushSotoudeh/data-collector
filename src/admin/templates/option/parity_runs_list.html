@@ -27,17 +27,18 @@
   <div class="card-header"><h3 class="card-title">Parity Analysis Runs</h3><div class="card-actions text-muted">{{ total }} records</div></div>
   <div class="table-responsive">
     <table class="table table-striped table-hover table-vcenter card-table">
-      <thead><tr><th>Created</th><th>Run ID</th><th>Underlying</th><th>Call</th><th>Put</th><th>Strike</th><th>Date Range</th><th>Status</th><th>Snapshots</th><th>Valid</th><th>Warnings</th><th>Invalid</th><th>Opportunities</th><th>All fields</th></tr></thead>
+      <thead><tr><th>Created</th><th>Run ID</th><th>Underlying</th><th>Call</th><th>Put</th><th>Strike</th><th>Logic / threshold</th><th>Date Range</th><th>Status</th><th>Snapshots</th><th>Valid</th><th>Warnings</th><th>Invalid</th><th>Opportunities</th><th>All fields</th></tr></thead>
       <tbody>
       {% for row in rows %}
         <tr>
           <td class="mono">{{ row.created_at }}</td><td><code>{{ row.run_id }}</code></td><td><code>{{ row.underlying_instrument_code }}</code></td>
           <td><code>{{ row.call_instrument_code }}</code></td><td><code>{{ row.put_instrument_code }}</code></td><td class="mono">{{ row.strike }}</td>
+          <td>{% if row.calculation_version == 'parity-v3' %}<span class="badge bg-green-lt">YTM</span> {{ row.minimum_ytm_spread_bps }} bps{% else %}<span class="badge bg-yellow-lt">Legacy edge logic</span>{% endif %}</td>
           <td>{{ row.start_date }} – {{ row.end_date }}</td><td><span class="badge bg-blue-lt">{{ row.status }}</span></td>
           <td class="mono">{{ row.snapshot_count }}</td><td class="mono">{{ row.valid_count }}</td><td class="mono">{{ row.warning_count }}</td><td class="mono">{{ row.invalid_count }}</td><td class="mono">{{ row.opportunity_count }}</td>
           <td><details><summary class="btn btn-sm btn-ghost-secondary">View</summary><div class="raw-data mt-2"><table class="table table-sm"><tbody>{% for key, value in row.items() %}<tr><th>{{ key }}</th><td class="mono">{{ value }}</td></tr>{% endfor %}</tbody></table></div></details></td>
         </tr>
-      {% else %}<tr><td colspan="14" class="text-center text-muted py-4">No records found.</td></tr>{% endfor %}
+      {% else %}<tr><td colspan="15" class="text-center text-muted py-4">No records found.</td></tr>{% endfor %}
       </tbody>
     </table>
   </div>

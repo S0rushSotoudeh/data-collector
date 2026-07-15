@@ -66,12 +66,14 @@ async def create_parity_run(request: Request, config: ParityRunConfig):
         "strike": strike, "expiry_date": expiry,
         **{name: getattr(config, name) for name in (
             "underlying_instrument_code", "call_instrument_code", "put_instrument_code",
-            "start_date", "end_date", "interval_seconds", "max_quote_age_seconds", "margin_value",
-            "margin_unit", "funding_source", "manual_borrowing_rate",
+            "start_date", "end_date", "interval_seconds", "max_quote_age_seconds",
+            "minimum_ytm_spread_bps", "funding_source", "manual_borrowing_rate",
             "borrowing_spread", "stock_fee_category", "option_fee_category", "multiplier", "tick_size",
         )},
         "start_time": config.start_time.isoformat(), "end_time": config.end_time.isoformat(),
-        "expiry_cutoff": config.expiry_cutoff.isoformat(), "margin_per_share": config.converted_margin(strike),
+        "expiry_cutoff": config.expiry_cutoff.isoformat(),
+        # Kept only because parity-v2 history shares this table schema.
+        "margin_value": 0.0, "margin_unit": "legacy_unused", "margin_per_share": 0.0,
         **{f"{name}_fee": value for name, value in fees.__dict__.items()},
         "calculation_version": CALCULATION_VERSION,
         "config_json": json.dumps(config_payload), "status": "queued", "snapshot_count": 0,

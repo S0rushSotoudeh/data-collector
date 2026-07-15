@@ -36,10 +36,10 @@ def test_parity_charts_are_full_width_and_use_shared_support():
         "call-price-chart",
         "put-price-chart",
         "underlying-price-chart",
-        "edge-chart",
+        "ytm-chart",
+        "ytm-spread-chart",
+        "capital-profit-chart",
         "capacity-chart",
-        "funding-chart",
-        "pv-chart",
     ]
 
     assert "col-lg-" not in source
@@ -48,6 +48,8 @@ def test_parity_charts_are_full_width_and_use_shared_support():
     assert "AdminCharts.dualAxisZoom(" in source
     for chart_id in chart_ids:
         assert chart_id in source
+    for text in ("Minimum YTM spread", "Investment / contract", "Profit at expiry / contract", "Legacy edge logic"):
+        assert text in source
 
 
 @pytest.mark.parametrize("template_name", CHART_TEMPLATES[1:])

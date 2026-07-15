@@ -12,7 +12,7 @@ from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from typing import Literal
 
 YEAR_SECONDS = 365.25 * 24 * 60 * 60
-CALCULATION_VERSION = "parity-v2"
+CALCULATION_VERSION = "parity-v3"
 
 
 @dataclass(frozen=True)
@@ -95,58 +95,95 @@ def round_to_tick(value: float, tick_size: float, direction: Literal["floor", "c
 
 def calculate(
     *, call: Book, put: Book, stock: Book, strike: float, ttm_years: float,
-    borrowing_rate: float, fees: Fees, required_margin: float,
+    borrowing_rate: float, fees: Fees, minimum_ytm_spread_bps: float,
     multiplier: int, tick_size: float | None = None,
 ) -> dict[str, object]:
-    """Evaluate maker-first openings of short call + long put + long stock.
+    """Evaluate fixed-payoff maker openings of short call + long put + stock.
 
-    The stock is never sold while opening.  Closing costs are estimates only,
-    based on the currently executable opposite quotes.
+    Each package pays ``strike`` per underlying share at expiry.  Its capital
+    base is the actual opening cash outflow after fees and call-sale proceeds.
+    Yields use continuous annual compounding, matching the bond curve.
     """
+    if minimum_ytm_spread_bps < 0:
+        raise ValueError("minimum YTM spread must not be negative")
+    target_ytm = borrowing_rate + minimum_ytm_spread_bps / 10_000.0
     pv_borrowing = present_value(strike, borrowing_rate, ttm_years)
-    closing_fee = fee(call.ask, fees.call_buy) + fee(put.bid, fees.put_sell) + fee(stock.bid, fees.stock_sell)
+    target_capital = present_value(strike, target_ytm, ttm_years)
 
     strategies = {
-        "make_call_ask": (call.ask, call.ask, call.ask_volume, put.ask_volume, stock.ask_volume,
-            call.ask + pv_borrowing - put.ask - stock.ask,
-            fee(call.ask, fees.call_sell) + fee(put.ask, fees.put_buy) + fee(stock.ask, fees.stock_buy),
-            "ceil"),
-        "make_put_bid": (put.bid, put.bid, call.bid_volume, put.bid_volume, stock.ask_volume,
-            call.bid + pv_borrowing - put.bid - stock.ask,
-            fee(call.bid, fees.call_sell) + fee(put.bid, fees.put_buy) + fee(stock.ask, fees.stock_buy),
-            "floor"),
-        "make_underlying_bid": (stock.bid, stock.bid, call.bid_volume, put.ask_volume, stock.bid_volume,
-            call.bid + pv_borrowing - put.ask - stock.bid,
-            fee(call.bid, fees.call_sell) + fee(put.ask, fees.put_buy) + fee(stock.bid, fees.stock_buy),
-            "floor"),
+        "make_call_ask": {
+            "maker_price": call.ask,
+            "call_price": call.ask,
+            "put_price": put.ask,
+            "stock_price": stock.ask,
+            "volumes": (call.ask_volume, put.ask_volume, stock.ask_volume),
+            "rounding": "ceil",
+        },
+        "make_put_bid": {
+            "maker_price": put.bid,
+            "call_price": call.bid,
+            "put_price": put.bid,
+            "stock_price": stock.ask,
+            "volumes": (call.bid_volume, put.bid_volume, stock.ask_volume),
+            "rounding": "floor",
+        },
+        "make_underlying_bid": {
+            "maker_price": stock.bid,
+            "call_price": call.bid,
+            "put_price": put.ask,
+            "stock_price": stock.bid,
+            "volumes": (call.bid_volume, put.ask_volume, stock.bid_volume),
+            "rounding": "floor",
+        },
     }
-    result: dict[str, object] = {"pv_borrowing": pv_borrowing}
-    for name, (maker_price, _, call_volume, put_volume, stock_volume, gross, opening_fee, rounding) in strategies.items():
+    result: dict[str, object] = {
+        "pv_borrowing": pv_borrowing,
+        "target_ytm": target_ytm,
+        "target_capital_per_share": target_capital,
+    }
+    for name, strategy in strategies.items():
+        maker_price = float(strategy["maker_price"])
+        call_price = float(strategy["call_price"])
+        put_price = float(strategy["put_price"])
+        stock_price = float(strategy["stock_price"])
+        call_volume, put_volume, stock_volume = strategy["volumes"]
         capacity, limiting = executable_capacity(call_volume, put_volume, stock_volume, multiplier)
-        net = gross - opening_fee - closing_fee
-        surplus = net - required_margin
+        stock_cost = stock_price + fee(stock_price, fees.stock_buy)
+        put_cost = put_price + fee(put_price, fees.put_buy)
+        call_proceeds = call_price - fee(call_price, fees.call_sell)
+        opening_fee = (
+            fee(stock_price, fees.stock_buy)
+            + fee(put_price, fees.put_buy)
+            + fee(call_price, fees.call_sell)
+        )
+        capital = stock_cost + put_cost - call_proceeds
+        expiry_profit = strike - capital
+        holding_return = strike / capital - 1 if capital > 0 else None
+        ytm = math.log(strike / capital) / ttm_years if capital > 0 and ttm_years > 0 else None
+        ytm_spread_bps = (ytm - borrowing_rate) * 10_000 if ytm is not None else None
         if name == "make_call_ask":
-            boundary = (put.ask + stock.ask - pv_borrowing + fee(put.ask, fees.put_buy)
-                        + fee(stock.ask, fees.stock_buy) + fee(put.bid, fees.put_sell)
-                        + fee(stock.bid, fees.stock_sell) + required_margin) / (1 - fees.call_sell - fees.call_buy)
+            boundary = (stock_cost + put_cost - target_capital) / (1 - fees.call_sell)
         elif name == "make_put_bid":
-            boundary = (call.bid + pv_borrowing - stock.ask - fee(call.bid, fees.call_sell)
-                        - fee(stock.ask, fees.stock_buy) - closing_fee - required_margin) / (1 + fees.put_buy)
+            boundary = (target_capital - stock_cost + call_proceeds) / (1 + fees.put_buy)
         else:
-            boundary = (call.bid + pv_borrowing - put.ask - fee(call.bid, fees.call_sell)
-                        - fee(put.ask, fees.put_buy) - closing_fee - required_margin) / (1 + fees.stock_buy)
-        suggested = round_to_tick(boundary, tick_size, rounding) if tick_size else None
+            boundary = (target_capital - put_cost + call_proceeds) / (1 + fees.stock_buy)
+        suggested = round_to_tick(boundary, tick_size, strategy["rounding"]) if tick_size else None
+        package_shares = multiplier * capacity
         result.update({
-            f"{name}_maker_price": maker_price, f"{name}_gross_edge": gross,
-            f"{name}_opening_fee": opening_fee, f"{name}_estimated_closing_fee": closing_fee,
-            f"{name}_net_edge": net, f"{name}_surplus_edge": surplus,
-            f"{name}_gross_edge_per_contract": gross * multiplier,
-            f"{name}_net_edge_per_contract": net * multiplier,
-            f"{name}_surplus_edge_per_contract": surplus * multiplier,
-            f"{name}_opportunity": surplus > 0 and capacity > 0,
+            f"{name}_maker_price": maker_price,
+            f"{name}_opening_fee": opening_fee,
+            f"{name}_capital_per_share": capital,
+            f"{name}_capital_per_contract": capital * multiplier,
+            f"{name}_total_capital": capital * package_shares,
+            f"{name}_expiry_profit_per_share": expiry_profit,
+            f"{name}_expiry_profit_per_contract": expiry_profit * multiplier,
+            f"{name}_total_expiry_profit": expiry_profit * package_shares,
+            f"{name}_holding_return": holding_return,
+            f"{name}_ytm": ytm,
+            f"{name}_ytm_spread_bps": ytm_spread_bps,
+            f"{name}_opportunity": capital <= target_capital + 1e-12 * max(1.0, abs(target_capital)) and capacity > 0,
             f"{name}_capacity": capacity, f"{name}_limiting_legs": limiting,
-            f"{name}_total_value": surplus * multiplier * capacity,
-            f"{name}_profitable_boundary": boundary,
+            f"{name}_target_boundary": boundary,
             f"{name}_suggested_maker_price": suggested if suggested is None or suggested >= 0 else None,
             f"{name}_headroom": (maker_price - boundary if name == "make_call_ask" else boundary - maker_price),
         })
