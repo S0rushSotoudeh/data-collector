@@ -33,7 +33,7 @@
         <tr>
           <td class="mono">{{ row.created_at }}</td><td><code>{{ row.run_id }}</code></td><td><code>{{ row.underlying_instrument_code }}</code></td>
           <td><code>{{ row.call_instrument_code }}</code></td><td><code>{{ row.put_instrument_code }}</code></td><td class="mono">{{ row.strike }}</td>
-          <td>{% if row.calculation_version == 'parity-v3' %}<span class="badge bg-green-lt">YTM</span> {{ row.minimum_ytm_spread_bps }} bps{% else %}<span class="badge bg-yellow-lt">Legacy edge logic</span>{% endif %}</td>
+          <td>{% if row.calculation_version in ('parity-v3', 'parity-v4') %}<span class="badge bg-green-lt">YTM</span> {{ row.minimum_ytm_spread_bps }} bps{% else %}<span class="badge bg-yellow-lt">Legacy edge logic</span>{% endif %}</td>
           <td>{{ row.start_date }} – {{ row.end_date }}</td><td><span class="badge bg-blue-lt">{{ row.status }}</span></td>
           <td class="mono">{{ row.snapshot_count }}</td><td class="mono">{{ row.valid_count }}</td><td class="mono">{{ row.warning_count }}</td><td class="mono">{{ row.invalid_count }}</td><td class="mono">{{ row.opportunity_count }}</td>
           <td><details><summary class="btn btn-sm btn-ghost-secondary">View</summary><div class="raw-data mt-2"><table class="table table-sm"><tbody>{% for key, value in row.items() %}<tr><th>{{ key }}</th><td class="mono">{{ value }}</td></tr>{% endfor %}</tbody></table></div></details></td>

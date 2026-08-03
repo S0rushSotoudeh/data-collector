@@ -158,7 +158,7 @@ def process_run(run_id: str) -> dict[str, int]:
     stored = _run_row(client, run_id)
     if stored.get("calculation_version") != CALCULATION_VERSION:
         raise RuntimeError(
-            "Only parity-v3 runs can be processed; finish or cancel queued parity-v2 runs before deployment"
+            f"Only {CALCULATION_VERSION} runs can be processed; finish or cancel queued older runs before deployment"
         )
     config = ParityRunConfig.model_validate_json(stored["config_json"])
     _update_run(client, stored, "running", error="")

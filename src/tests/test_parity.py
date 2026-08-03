@@ -44,20 +44,27 @@ def test_three_maker_strategies_fees_capacity_totals_and_boundaries():
         minimum_ytm_spread_bps=100, multiplier=100, tick_size=.5,
     )
     capital = 111 * 1.01 + 11 * 1.03 - 21 * (1 - .02)
+    closing_fee = 21 * .02 + 10 * .03 + 110 * .01
+    net_expiry_receipt = 100 - closing_fee
     assert result["make_call_ask_capital_per_share"] == pytest.approx(capital)
+    assert result["make_call_ask_estimated_closing_fee"] == pytest.approx(closing_fee)
     assert result["make_call_ask_capital_per_contract"] == pytest.approx(capital * 100)
-    assert result["make_call_ask_expiry_profit_per_share"] == pytest.approx(100 - capital)
-    assert result["make_call_ask_holding_return"] == pytest.approx(100 / capital - 1)
-    assert result["make_call_ask_ytm"] == pytest.approx(math.log(100 / capital))
-    assert result["make_call_ask_ytm_spread_bps"] == pytest.approx((math.log(100 / capital) - .2) * 10_000)
+    assert result["make_call_ask_expiry_profit_per_share"] == pytest.approx(net_expiry_receipt - capital)
+    assert result["make_call_ask_holding_return"] == pytest.approx(net_expiry_receipt / capital - 1)
+    assert result["make_call_ask_ytm"] == pytest.approx(math.log(net_expiry_receipt / capital))
+    assert result["make_call_ask_ytm_spread_bps"] == pytest.approx(
+        (math.log(net_expiry_receipt / capital) - .2) * 10_000
+    )
     assert result["target_ytm"] == pytest.approx(.21)
-    assert result["target_capital_per_share"] == pytest.approx(100 * math.exp(-.21))
+    assert result["target_capital_per_share"] == pytest.approx(net_expiry_receipt * math.exp(-.21))
     assert result["make_call_ask_capacity"] == 5
     assert result["make_call_ask_limiting_legs"] == ["underlying"]
     assert result["make_put_bid_capacity"] == 5
     assert result["make_underlying_bid_capacity"] == 6
     assert result["make_call_ask_total_capital"] == pytest.approx(capital * 500)
-    assert result["make_call_ask_total_expiry_profit"] == pytest.approx((100 - capital) * 500)
+    assert result["make_call_ask_total_expiry_profit"] == pytest.approx(
+        (net_expiry_receipt - capital) * 500
+    )
     suggestions = [result[f"{strategy}_suggested_maker_price"] for strategy in (
         "make_call_ask", "make_put_bid", "make_underlying_bid"
     )]

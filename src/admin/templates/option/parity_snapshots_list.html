@@ -35,7 +35,7 @@
         <tr>
           <td class="mono">{{ row.snapshot_time }}</td><td><code>{{ row.run_id }}</code></td><td><code>{{ row.underlying_instrument_code }}</code></td><td><code>{{ row.call_instrument_code }}</code></td><td><code>{{ row.put_instrument_code }}</code></td>
           <td class="mono">{{ row.stock_bid }} / {{ row.stock_ask }}</td><td class="mono">{{ row.call_bid }} / {{ row.call_ask }}</td><td class="mono">{{ row.put_bid }} / {{ row.put_ask }}</td>
-          {% if row.calculation_version == 'parity-v3' %}
+          {% if row.calculation_version in ('parity-v3', 'parity-v4') %}
           <td class="mono">capital {{ row.make_call_ask_capital_per_contract }}<br>profit {{ row.make_call_ask_expiry_profit_per_contract }}<br>YTM {{ row.make_call_ask_ytm }} / {{ row.make_call_ask_ytm_spread_bps }} bps {% if row.make_call_ask_opportunity %}<span class="badge bg-green-lt">Yes</span>{% endif %}</td>
           <td class="mono">capital {{ row.make_put_bid_capital_per_contract }}<br>profit {{ row.make_put_bid_expiry_profit_per_contract }}<br>YTM {{ row.make_put_bid_ytm }} / {{ row.make_put_bid_ytm_spread_bps }} bps {% if row.make_put_bid_opportunity %}<span class="badge bg-green-lt">Yes</span>{% endif %}</td>
           <td class="mono">capital {{ row.make_underlying_bid_capital_per_contract }}<br>profit {{ row.make_underlying_bid_expiry_profit_per_contract }}<br>YTM {{ row.make_underlying_bid_ytm }} / {{ row.make_underlying_bid_ytm_spread_bps }} bps {% if row.make_underlying_bid_opportunity %}<span class="badge bg-green-lt">Yes</span>{% endif %}</td>

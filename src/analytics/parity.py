@@ -12,7 +12,7 @@ from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from typing import Literal
 
 YEAR_SECONDS = 365.25 * 24 * 60 * 60
-CALCULATION_VERSION = "parity-v3"
+CALCULATION_VERSION = "parity-v4"
 
 
 @dataclass(frozen=True)
@@ -100,15 +100,28 @@ def calculate(
 ) -> dict[str, object]:
     """Evaluate fixed-payoff maker openings of short call + long put + stock.
 
-    Each package pays ``strike`` per underlying share at expiry.  Its capital
-    base is the actual opening cash outflow after fees and call-sale proceeds.
-    Yields use continuous annual compounding, matching the bond curve.
+    Each package pays ``strike`` per underlying share at expiry before the
+    estimated cost of closing its three legs.  The closing cost uses the
+    currently executable opposite quotes, matching the parity-v2 convention.
+    Its capital base is the actual opening cash outflow after fees and
+    call-sale proceeds.  Yields use continuous annual compounding, matching
+    the bond curve.
     """
     if minimum_ytm_spread_bps < 0:
         raise ValueError("minimum YTM spread must not be negative")
     target_ytm = borrowing_rate + minimum_ytm_spread_bps / 10_000.0
     pv_borrowing = present_value(strike, borrowing_rate, ttm_years)
-    target_capital = present_value(strike, target_ytm, ttm_years)
+    estimated_closing_fee = (
+        fee(call.ask, fees.call_buy)
+        + fee(put.bid, fees.put_sell)
+        + fee(stock.bid, fees.stock_sell)
+    )
+    net_expiry_receipt = strike - estimated_closing_fee
+    target_capital = (
+        net_expiry_receipt * math.exp(-target_ytm * ttm_years)
+        if net_expiry_receipt > 0
+        else 0.0
+    )
 
     strategies = {
         "make_call_ask": {
@@ -157,9 +170,13 @@ def calculate(
             + fee(call_price, fees.call_sell)
         )
         capital = stock_cost + put_cost - call_proceeds
-        expiry_profit = strike - capital
-        holding_return = strike / capital - 1 if capital > 0 else None
-        ytm = math.log(strike / capital) / ttm_years if capital > 0 and ttm_years > 0 else None
+        expiry_profit = net_expiry_receipt - capital
+        holding_return = net_expiry_receipt / capital - 1 if capital > 0 and net_expiry_receipt > 0 else None
+        ytm = (
+            math.log(net_expiry_receipt / capital) / ttm_years
+            if capital > 0 and net_expiry_receipt > 0 and ttm_years > 0
+            else None
+        )
         ytm_spread_bps = (ytm - borrowing_rate) * 10_000 if ytm is not None else None
         if name == "make_call_ask":
             boundary = (stock_cost + put_cost - target_capital) / (1 - fees.call_sell)
@@ -172,6 +189,7 @@ def calculate(
         result.update({
             f"{name}_maker_price": maker_price,
             f"{name}_opening_fee": opening_fee,
+            f"{name}_estimated_closing_fee": estimated_closing_fee,
             f"{name}_capital_per_share": capital,
             f"{name}_capital_per_contract": capital * multiplier,
             f"{name}_total_capital": capital * package_shares,
@@ -181,7 +199,11 @@ def calculate(
             f"{name}_holding_return": holding_return,
             f"{name}_ytm": ytm,
             f"{name}_ytm_spread_bps": ytm_spread_bps,
-            f"{name}_opportunity": capital <= target_capital + 1e-12 * max(1.0, abs(target_capital)) and capacity > 0,
+            f"{name}_opportunity": (
+                net_expiry_receipt > 0
+                and capital <= target_capital + 1e-12 * max(1.0, abs(target_capital))
+                and capacity > 0
+            ),
             f"{name}_capacity": capacity, f"{name}_limiting_legs": limiting,
             f"{name}_target_boundary": boundary,
             f"{name}_suggested_maker_price": suggested if suggested is None or suggested >= 0 else None,
