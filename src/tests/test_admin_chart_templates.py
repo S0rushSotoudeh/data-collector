@@ -8,6 +8,7 @@ from src.admin._render import _TEMPLATE_ENV
 CHART_TEMPLATES = [
     "shared/echarts_support.html",
     "option/parity_analysis.html",
+    "option/iv_surface.html",
     "bonds/yield_curve_chart.html",
     "bonds/yield_spread_chart.html",
     "bonds/bond_trades_values.html",
@@ -51,6 +52,25 @@ def test_parity_charts_are_full_width_and_use_shared_support():
     assert '<details class="mb-3"><summary class="btn btn-outline-secondary mb-2">Snapshot diagnostics</summary>' in source
     for text in ("Minimum YTM spread", "Investment / contract", "Profit at expiry / contract", "Legacy edge logic"):
         assert text in source
+
+
+def test_iv_forward_chart_separates_price_and_percentage_axes() -> None:
+    source = Path("src/admin/templates/option/iv_surface.html").read_text()
+
+    assert "new Map(fpRows.map(x=>[x.snapshot_time,x]))" in source
+    assert "name:'Forward price'" in source
+    assert "name:'Funding rate',position:'right'" in source
+    assert "rateValue=value=>`${(Number(value)*100).toFixed(2)}%`" in source
+    assert "name:'Funding rate',type:'line',yAxisIndex:1" in source
+
+
+def test_iv_raw_point_tooltip_keeps_only_compact_hover_data() -> None:
+    source = Path("src/admin/templates/option/iv_surface.html").read_text()
+
+    assert "tooltip:{trigger:'item',formatter:smileTooltip}" in source
+    assert "x.iv,x.option_type,x.strike" in source
+    for label in ("Type:", "Strike:", "IV:", "log(K/F):"):
+        assert label in source
 
 
 @pytest.mark.parametrize("template_name", CHART_TEMPLATES[1:])
