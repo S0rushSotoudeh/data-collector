@@ -1,4 +1,5 @@
 import html
+from types import SimpleNamespace
 from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
@@ -36,6 +37,8 @@ _TEMPLATE_ENV.globals["get_flashed_messages"] = get_flashed_messages
 _TEMPLATE_ENV.globals["Secret"] = Secret
 _TEMPLATE_ENV.globals["min"] = min
 _TEMPLATE_ENV.globals["zip"] = zip
+_TEMPLATE_ENV.globals["_"] = lambda value: value
+_TEMPLATE_ENV.globals["i18n_config"] = SimpleNamespace(language_switcher=[])
 
 
 def _render(name: str, ctx: dict[str, Any]) -> str:

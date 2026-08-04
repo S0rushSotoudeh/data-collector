@@ -5,3 +5,6 @@ collector_venv
 .kilo/
 .env
 cookies*.txt
+*.json
+*.sig
+graphify-out/

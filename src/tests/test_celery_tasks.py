@@ -21,8 +21,12 @@ def test_all_tasks_registered() -> None:
         "src.tasks.backfill_option_order_books_task",
         "src.tasks.fetch_yesterday_option_trades",
         "src.tasks.backfill_option_trades_task",
-        "src.tasks.run_parity_analysis",
-    }
+            "src.tasks.run_parity_analysis",
+            "src.tasks.run_iv_surface",
+            "src.tasks.fetch_yesterday_stock_orderbook",
+            "src.tasks.fetch_yesterday_stock_trades",
+            "src.tasks.compute_option_market_potential_daily",
+        }
     registered = set(task_names)
     assert registered == expected, (
         f"Missing: {expected - registered}. Extra: {registered - expected}"

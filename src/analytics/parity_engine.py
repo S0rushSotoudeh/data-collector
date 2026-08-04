@@ -13,11 +13,11 @@ from src.analytics.parity_config import ParityRunConfig
 from src.analytics.yield_curve import ns_yield
 from src.db.clickhouse import get_client
 from src.db.clickhouse.parity import (
-    RUNS_TABLE,
     SNAPSHOT_COLUMNS,
-    insert_run,
     insert_snapshots,
 )
+from src.services.operation_runs import fail_run as fail_operation_run
+from src.services.operation_runs import get_run, run_to_dict, update_progress, update_run
 
 TEHRAN = ZoneInfo("Asia/Tehran")
 
@@ -53,19 +53,31 @@ def latest_state_rows(rows: list[tuple], snapshots: list[datetime]) -> list[tupl
 
 
 def _run_row(client, run_id: str) -> dict[str, Any]:
-    result = client.query(
-        f"SELECT * FROM `{RUNS_TABLE}` FINAL WHERE run_id = {{rid:UUID}} LIMIT 1",
-        parameters={"rid": run_id},
-    )
-    if not result.result_rows:
+    operation = get_run(run_id)
+    if operation is None or operation.family != "parity":
         raise ValueError("unknown parity run")
-    return dict(zip(result.column_names, result.result_rows[0]))
+    return run_to_dict(operation)
 
 
 def _update_run(client, row: dict[str, Any], status: str, **counts: Any) -> None:
-    updated = dict(row)
-    updated.update(counts, status=status, updated_at=datetime.now(TEHRAN))
-    insert_run(updated, client)
+    row.update(counts, status=status, updated_at=datetime.now(TEHRAN))
+    if status == "running":
+        update_progress(
+            row["run_id"],
+            current=int(counts.get("snapshot_count", row.get("snapshot_count", 0)) or 0),
+            output_count=int(counts.get("snapshot_count", row.get("snapshot_count", 0)) or 0),
+            warning_count=int(counts.get("warning_count", row.get("warning_count", 0)) or 0),
+            result={key: row.get(key, 0) for key in ("snapshot_count", "valid_count", "warning_count", "invalid_count", "opportunity_count")},
+        )
+    else:
+        update_run(
+            row["run_id"], status=status,
+            result={key: row.get(key, 0) for key in ("snapshot_count", "valid_count", "warning_count", "invalid_count", "opportunity_count")},
+            progress_current=int(row.get("snapshot_count", 0) or 0),
+            output_count=int(row.get("snapshot_count", 0) or 0),
+            warning_count=int(row.get("warning_count", 0) or 0),
+            error=str(row.get("error") or ""),
+        )
 
 
 def _quotes(client, table: str, code: str, day: date, end: time) -> list[tuple]:
@@ -237,12 +249,11 @@ def process_run(run_id: str) -> dict[str, int]:
             if len(batch) >= 1000:
                 insert_snapshots(batch, client); batch.clear()
         day += timedelta(days=1)
+        _update_run(client, stored, "running", **counts, error="")
     insert_snapshots(batch, client)
     _update_run(client, stored, "completed", **counts, error="")
     return counts
 
 
 def fail_run(run_id: str, error: str) -> None:
-    client = get_client()
-    stored = _run_row(client, run_id)
-    _update_run(client, stored, "failed", error=error[:4000])
+    fail_operation_run(run_id, error)

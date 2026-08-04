@@ -6,7 +6,7 @@ High-frequency market data aggregation platform. Collects real-time tick data fr
 
 - **All code runs inside Docker Compose** — never run Python directly on host. Use `docker compose exec api ...` for everything.
 - **Admin BaseView pages** must use manual `jinja2.Environment` + `_render()` helper with `self._admin_ref` (never `self.admin`). See `.kilo/agent/admin-panel.md`.
-- **Prefix all shell commands with `rtk`** — saves 60-90% tokens. See `.kilo/rules/rtk-rules.md`.
+- **Graphify is mandatory for code work.** Before reading implementation files or editing code, follow `.agents/skills/graphify/SKILL.md`: verify graph freshness, update it when stale, and query the affected subsystem. After every code change, update the graph and query the changed symbols again. If Graphify is unavailable or fails, stop and report the failure instead of silently substituting raw search.
 
 ## Reference files
 
@@ -18,3 +18,4 @@ High-frequency market data aggregation platform. Collects real-time tick data fr
 | `.kilo/agent/structure.md` | Full project directory tree |
 | `.kilo/agent/dev-workflow.md` | Docker, test, migration CLI commands |
 | `.kilo/agent/admin-panel.md` | Admin panel template pattern, context keys, how-to-add |
+| `.agents/skills/graphify/SKILL.md` | Required graph-first code discovery and post-change update workflow |

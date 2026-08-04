@@ -8,7 +8,7 @@
       {% endfor %}
     {% endif %}
 
-    <div class="alert alert-info">Tasks run asynchronously on the Celery worker. Submit a task below, then use the status checker to see the result.</div>
+    <div class="alert alert-info">Tasks run asynchronously and are tracked in their Collection Runs or Yield-Curve Runs page.</div>
   </div>
 </div>
 
@@ -203,21 +203,4 @@
   </div>
 </div>
 
-<div class="card mb-3">
-  <div class="card-header"><h3 class="card-title">Task Status</h3></div>
-  <div class="card-body">
-    <p>Check the status and result of a submitted task.</p>
-    <form method="post" action="{{ request.url.path }}" class="mb-3">
-      <input type="hidden" name="action" value="check-status">
-      <div class="row g-2 mb-2">
-        <div class="col-auto">
-          <input type="text" class="form-control" name="task_id" placeholder="Task ID" required style="width:300px" value="{{ task_id or '' }}">
-        </div>
-        <div class="col-auto">
-          <button type="submit" class="btn btn-info">Check Status</button>
-        </div>
-      </div>
-    </form>
-  </div>
-</div>
 {% endblock %}

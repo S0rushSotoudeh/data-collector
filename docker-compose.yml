@@ -1,4 +1,18 @@
 services:
+  graphify:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: graphify
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      GRAPHIFY_QUERY_LOG_DISABLE: "1"
+      HOME: /tmp/graphify-home
+
   api:
     build:
       context: .

@@ -86,8 +86,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 12
-        assert applied == list(range(1, 13))
+        assert len(new_versions) == 13
+        assert applied == list(range(1, 14))
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -104,12 +104,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == list(range(3, 13))
-        assert applied == list(range(3, 13))
+        assert new_versions == list(range(3, 14))
+        assert applied == list(range(3, 14))
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 13)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 14)]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -122,7 +122,7 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 12
+        assert len(new_versions) == 13
 
     def test_parity_ytm_migration_is_additive_and_reversible(self) -> None:
         migration = importlib.import_module(
@@ -218,7 +218,7 @@ class TestPending:
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 13)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 14)]
 
         p = pending(client)
         assert p == []
@@ -227,7 +227,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 13)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 14)]
 
         assert check(client) is True
 

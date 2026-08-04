@@ -120,6 +120,16 @@ def cmd_ch_check(args):
         sys.exit(1)
 
 
+def cmd_import_legacy_runs(args):
+    from src.services.operation_runs import import_legacy_clickhouse_runs
+
+    imported = import_legacy_clickhouse_runs()
+    print(
+        "Imported legacy operation runs: "
+        + ", ".join(f"{family}={count}" for family, count in imported.items())
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(prog="manage.py", description="Data Collector management commands")
     sub = parser.add_subparsers(dest="command")
@@ -139,6 +149,7 @@ def main():
     trades_parser.add_argument("--end", required=True, type=date.fromisoformat, help="End date (YYYY-MM-DD)")
 
     sub.add_parser("option-sync", help="Sync option instruments and backfill last 7 days of order books + trades")
+    sub.add_parser("import-legacy-runs", help="Idempotently import parity and IV run metadata from ClickHouse")
 
     sub.add_parser("sync-option-instruments", help="Sync all option instruments from TSETMC MarketWatch to PostgreSQL")
 
@@ -247,6 +258,8 @@ def main():
             print(f"  {e}")
     elif args.command == "shell":
         cmd_shell(args)
+    elif args.command == "import-legacy-runs":
+        cmd_import_legacy_runs(args)
     elif args.command == "clickhouse":
         if args.ch_command == "migrate":
             cmd_ch_migrate(args)

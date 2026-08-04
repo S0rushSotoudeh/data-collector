@@ -144,15 +144,13 @@ def test_process_run_persists_complete_invalid_and_valid_snapshots():
         "funding_source": "manual", "manual_borrowing_rate": 0.1,
         "strike": 100, "expiry_date": "2026-12-31",
     }
-    stored = SimpleNamespace(
-        column_names=["run_id", "config_json", "calculation_version"],
-        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config), CALCULATION_VERSION)],
-    )
+    stored = {
+        "run_id": "00000000-0000-0000-0000-000000000001",
+        "config_json": json.dumps(config), "calculation_version": CALCULATION_VERSION,
+    }
     client = MagicMock()
 
     def query(sql, parameters=None):
-        if "parity_analysis_runs" in sql:
-            return stored
         if "yield_curve_fits" in sql:
             return SimpleNamespace(result_rows=[])
         code = parameters["code"]
@@ -166,7 +164,9 @@ def test_process_run_persists_complete_invalid_and_valid_snapshots():
     client.query.side_effect = query
     with (
         patch("src.analytics.parity_engine.get_client", return_value=client),
-        patch("src.analytics.parity_engine.insert_run"),
+        patch("src.analytics.parity_engine._run_row", return_value=stored),
+        patch("src.analytics.parity_engine.update_progress"),
+        patch("src.analytics.parity_engine.update_run"),
         patch("src.analytics.parity_engine.insert_snapshots") as insert_snapshots,
     ):
         counts = process_run("00000000-0000-0000-0000-000000000001")
@@ -198,15 +198,13 @@ def test_process_run_uses_ask_curve_for_borrowing_rate():
         "expiry_cutoff": "12:30:00", "multiplier": 100, "minimum_ytm_spread_bps": 0,
         "funding_source": "curve", "strike": 100, "expiry_date": "2026-12-31",
     }
-    stored = SimpleNamespace(
-        column_names=["run_id", "config_json", "calculation_version"],
-        result_rows=[("00000000-0000-0000-0000-000000000001", json.dumps(config), CALCULATION_VERSION)],
-    )
+    stored = {
+        "run_id": "00000000-0000-0000-0000-000000000001",
+        "config_json": json.dumps(config), "calculation_version": CALCULATION_VERSION,
+    }
     client = MagicMock()
 
     def query(sql, parameters=None):
-        if "parity_analysis_runs" in sql:
-            return stored
         if "yield_curve_fits" in sql:
             return SimpleNamespace(result_rows=[
                 (90100, "bid", 0.10, 0.0, 0.0, 1.0, 0.0, 4, 1),
@@ -222,7 +220,9 @@ def test_process_run_uses_ask_curve_for_borrowing_rate():
     client.query.side_effect = query
     with (
         patch("src.analytics.parity_engine.get_client", return_value=client),
-        patch("src.analytics.parity_engine.insert_run"),
+        patch("src.analytics.parity_engine._run_row", return_value=stored),
+        patch("src.analytics.parity_engine.update_progress"),
+        patch("src.analytics.parity_engine.update_run"),
         patch("src.analytics.parity_engine.insert_snapshots") as insert_snapshots,
     ):
         process_run("00000000-0000-0000-0000-000000000001")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -12,11 +12,13 @@ from starlette.requests import Request
 
 from src.analytics.parity import CALCULATION_VERSION
 from src.analytics.parity_config import ParityRunConfig
-from src.db.clickhouse.parity import get_run, get_snapshots, insert_run, list_runs
+from src.analytics.parity_engine import aligned_snapshots
+from src.db.clickhouse.parity import get_snapshots
 from src.db.models.option import OptionInstrument
 from src.db.models.stock import StockInstrument
 from src.db.session import SessionLocal
 from src.routes.admin_tasks import _require_admin
+from src.services.operation_runs import enqueue_task, get_run, list_runs, run_to_dict
 from src.tasks import run_parity_analysis
 
 router = APIRouter(tags=["parity-analysis"])
@@ -80,24 +82,41 @@ async def create_parity_run(request: Request, config: ParityRunConfig):
         "valid_count": 0, "warning_count": 0, "invalid_count": 0, "opportunity_count": 0,
         "error": "", "created_at": now, "updated_at": now,
     }
-    insert_run(row)
-    task = run_parity_analysis.delay(run_id)
-    return {"run_id": run_id, "task_id": task.id, "status": "queued"}
+    total = 0
+    day = config.start_date
+    while day <= config.end_date:
+        total += len(aligned_snapshots(day, config.start_time, config.end_time, config.interval_seconds))
+        day += timedelta(days=1)
+    operation, task = enqueue_task(
+        run_parity_analysis,
+        args=[run_id],
+        family="parity",
+        run_type="parity.analysis",
+        target=config.underlying_instrument_code,
+        config=row,
+        start_date=config.start_date,
+        end_date=config.end_date,
+        progress_total=total,
+        run_id=run_id,
+        created_by=request.session.get("user") or "admin",
+    )
+    return {"run_id": str(operation.run_id), "task_id": task.id, "status": "queued"}
 
 
 @router.get("/api/v1/parity-analysis/runs")
 async def parity_runs(request: Request, limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)):
     await _require_admin(request)
-    return {"items": await list_runs(limit, offset), "limit": limit, "offset": offset}
+    _, rows = list_runs(family="parity", limit=limit, offset=offset)
+    return {"items": [run_to_dict(row) for row in rows], "limit": limit, "offset": offset}
 
 
 @router.get("/api/v1/parity-analysis/runs/{run_id}")
 async def parity_run(request: Request, run_id: uuid.UUID):
     await _require_admin(request)
-    row = await get_run(str(run_id))
+    row = get_run(str(run_id))
     if row is None:
         raise HTTPException(status_code=404, detail="Parity analysis run not found")
-    return row
+    return run_to_dict(row)
 
 
 @router.get("/api/v1/parity-analysis/runs/{run_id}/snapshots")
@@ -107,6 +126,6 @@ async def parity_snapshots(
     limit: int = Query(10000, ge=1, le=50000),
 ):
     await _require_admin(request)
-    if await get_run(str(run_id)) is None:
+    if get_run(str(run_id)) is None:
         raise HTTPException(status_code=404, detail="Parity analysis run not found")
     return {"items": await get_snapshots(str(run_id), trade_date, start_time, end_time, limit)}

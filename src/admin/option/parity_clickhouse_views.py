@@ -7,43 +7,9 @@ from starlette.responses import HTMLResponse
 from src.admin._render import _parse_date, _parse_int
 from src.admin._views import ClickHouseListView
 from src.db.clickhouse.parity import (
-    count_runs,
     count_snapshots,
-    get_runs_paginated,
     get_snapshots_paginated,
 )
-
-
-class ParityAnalysisRunsView(ClickHouseListView):
-    template_name = "option/parity_runs_list.html"
-    page_title = "Parity Analysis Runs"
-    page_subtitle = "Browse immutable put-call parity run configurations and outcomes"
-    name = "Parity Runs"
-    identity = "parity-analysis-runs"
-    icon = "fa-solid fa-list-check"
-    category = "Options Analytics"
-    category_icon = "fa-solid fa-chart-line"
-
-    def parse_filters(self, qp: dict[str, str]) -> dict[str, Any]:
-        return {
-            "run_id": qp.get("run_id", ""),
-            "underlying_instrument_code": qp.get("underlying_instrument_code", ""),
-            "status": qp.get("status", ""),
-        }
-
-    async def fetch(self, filters, offset, limit) -> tuple[int, list[dict]]:
-        kwargs = {
-            "run_id": filters["run_id"] or None,
-            "underlying_instrument_code": filters["underlying_instrument_code"] or None,
-            "status": filters["status"] or None,
-        }
-        total = await count_runs(**kwargs)
-        rows = await get_runs_paginated(**kwargs, offset=offset, limit=limit)
-        return total, rows
-
-    @expose("/parity-analysis-runs", methods=["GET"])
-    async def parity_analysis_runs(self, request: Request) -> HTMLResponse:
-        return await self._list(request)
 
 
 class ParityAnalysisSnapshotsView(ClickHouseListView):

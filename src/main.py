@@ -2,6 +2,7 @@ import os
 
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.responses import RedirectResponse
 
 from src.admin import create_admin
 from src.admin.auth import BasicAuthBackend
@@ -12,6 +13,8 @@ from src.routes.bond_trades_values import router as bond_trades_values_router
 from src.routes.option_market_data import router as option_market_data_router
 from src.routes.stock_market_data import router as stock_router
 from src.routes.parity_analysis import router as parity_analysis_router
+from src.routes.iv_surface import router as iv_surface_router
+from src.routes.market_potential import router as market_potential_router
 
 _SECRET_KEY = os.environ["SECRET_KEY"]
 
@@ -33,6 +36,13 @@ app.include_router(bond_trades_values_router, prefix="")
 app.include_router(option_market_data_router, prefix="")
 app.include_router(stock_router, prefix="")
 app.include_router(parity_analysis_router, prefix="")
+app.include_router(iv_surface_router, prefix="")
+app.include_router(market_potential_router, prefix="")
+
+
+@app.get("/admin/data-collection-run/list", include_in_schema=False)
+async def legacy_collection_runs_redirect():
+    return RedirectResponse("/admin/collection-runs", status_code=307)
 
 # Register the catch-all admin mount after API routers so /admin/tasks routes
 # are matched by their explicit handlers rather than the admin 404 fallback.
