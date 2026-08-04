@@ -12,7 +12,7 @@ from src.admin.run_views import (
     YieldCurveRunsView,
 )
 from src.celery_app import celery, create_scheduled_operation_run, fail_operation_run
-from src.services.operation_runs import TASK_SPECS, finish_run
+from src.services.operation_runs import RunProgressReporter, TASK_SPECS, finish_run
 from src.db.clickhouse.iv_surface import get_fits, get_points
 
 
@@ -89,6 +89,26 @@ def test_finish_run_uses_completed_and_skipped_states() -> None:
 
         finish_run(run_id, {"status": "skipped", "reason": "outside market hours"})
         assert update.call_args.kwargs["status"] == "skipped"
+
+
+def test_progress_reporter_persists_every_five_percent_and_at_completion() -> None:
+    run_id = uuid.uuid4()
+    with patch("src.services.operation_runs.update_progress") as update:
+        progress = RunProgressReporter(run_id)
+        progress.set_total(100)
+        for _ in range(4):
+            progress.advance(output_count=2)
+        assert update.call_count == 1
+
+        progress.advance(output_count=2)
+        assert update.call_count == 2
+        assert update.call_args.kwargs["current"] == 5
+        assert update.call_args.kwargs["output_count"] == 10
+
+        for _ in range(95):
+            progress.advance()
+        assert update.call_count == 21
+        assert update.call_args.kwargs["current"] == 100
 
 
 def test_analysis_engines_no_longer_import_legacy_run_writers() -> None:

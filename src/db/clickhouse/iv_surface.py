@@ -93,6 +93,154 @@ async def get_fits(run_id: str, limit: int = 50000) -> list[dict[str, Any]]:
     return _dict_rows(result)
 
 
+def _analytics_where(
+    *,
+    run_id: str | None = None,
+    trade_date: date | None = None,
+    underlying_instrument_code: str | None = None,
+    instrument_code: str | None = None,
+    option_type: str | None = None,
+    side: str | None = None,
+    expiry_date: date | None = None,
+    rejection_reason: str | None = None,
+    converged: int | None = None,
+    quality_flag: str | None = None,
+) -> tuple[str, dict[str, Any]]:
+    clauses: list[str] = []
+    params: dict[str, Any] = {}
+    filters = (
+        ("run_id", "rid", "UUID", run_id),
+        ("trade_date", "day", "Date", trade_date),
+        ("underlying_instrument_code", "underlying", "String", underlying_instrument_code),
+        ("instrument_code", "instrument", "String", instrument_code),
+        ("option_type", "option_type", "String", option_type),
+        ("side", "side", "String", side),
+        ("expiry_date", "expiry", "Date", expiry_date),
+        ("rejection_reason", "rejection", "String", rejection_reason),
+        ("converged", "converged", "UInt8", converged),
+    )
+    for column, parameter, ch_type, value in filters:
+        if value is not None:
+            clauses.append(f"{column} = {{{parameter}:{ch_type}}}")
+            params[parameter] = value
+    if quality_flag:
+        clauses.append("has(quality_flags, {quality_flag:String})")
+        params["quality_flag"] = quality_flag
+    return ("WHERE " + " AND ".join(clauses) if clauses else ""), params
+
+
+async def get_iv_points_paginated(
+    run_id: str | None = None,
+    trade_date: date | None = None,
+    underlying_instrument_code: str | None = None,
+    instrument_code: str | None = None,
+    option_type: str | None = None,
+    side: str | None = None,
+    expiry_date: date | None = None,
+    rejection_reason: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where, params = _analytics_where(
+        run_id=run_id,
+        trade_date=trade_date,
+        underlying_instrument_code=underlying_instrument_code,
+        instrument_code=instrument_code,
+        option_type=option_type,
+        side=side,
+        expiry_date=expiry_date,
+        rejection_reason=rejection_reason,
+    )
+    params.update(lim=limit, off=offset)
+    result = await client.query(
+        f"SELECT * FROM `{POINTS_TABLE}` {where} "
+        "ORDER BY snapshot_time DESC, expiry_date, side, strike, instrument_code "
+        "LIMIT {lim:UInt32} OFFSET {off:UInt32}",
+        parameters=params,
+    )
+    return _dict_rows(result)
+
+
+async def count_iv_points(
+    run_id: str | None = None,
+    trade_date: date | None = None,
+    underlying_instrument_code: str | None = None,
+    instrument_code: str | None = None,
+    option_type: str | None = None,
+    side: str | None = None,
+    expiry_date: date | None = None,
+    rejection_reason: str | None = None,
+) -> int:
+    client = await get_async_client()
+    where, params = _analytics_where(
+        run_id=run_id,
+        trade_date=trade_date,
+        underlying_instrument_code=underlying_instrument_code,
+        instrument_code=instrument_code,
+        option_type=option_type,
+        side=side,
+        expiry_date=expiry_date,
+        rejection_reason=rejection_reason,
+    )
+    result = await client.query(f"SELECT count() FROM `{POINTS_TABLE}` {where}", parameters=params)
+    return int(result.result_rows[0][0]) if result.result_rows else 0
+
+
+async def get_orc_wing_fits_paginated(
+    run_id: str | None = None,
+    trade_date: date | None = None,
+    underlying_instrument_code: str | None = None,
+    expiry_date: date | None = None,
+    side: str | None = None,
+    converged: int | None = None,
+    quality_flag: str | None = None,
+    offset: int = 0,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where, params = _analytics_where(
+        run_id=run_id,
+        trade_date=trade_date,
+        underlying_instrument_code=underlying_instrument_code,
+        expiry_date=expiry_date,
+        side=side,
+        converged=converged,
+        quality_flag=quality_flag,
+    )
+    params.update(lim=limit, off=offset)
+    result = await client.query(
+        f"SELECT * FROM `{FITS_TABLE}` {where} "
+        "ORDER BY snapshot_time DESC, expiry_date, side "
+        "LIMIT {lim:UInt32} OFFSET {off:UInt32}",
+        parameters=params,
+    )
+    return _dict_rows(result)
+
+
+async def count_orc_wing_fits(
+    run_id: str | None = None,
+    trade_date: date | None = None,
+    underlying_instrument_code: str | None = None,
+    expiry_date: date | None = None,
+    side: str | None = None,
+    converged: int | None = None,
+    quality_flag: str | None = None,
+) -> int:
+    client = await get_async_client()
+    where, params = _analytics_where(
+        run_id=run_id,
+        trade_date=trade_date,
+        underlying_instrument_code=underlying_instrument_code,
+        expiry_date=expiry_date,
+        side=side,
+        converged=converged,
+        quality_flag=quality_flag,
+    )
+    result = await client.query(f"SELECT count() FROM `{FITS_TABLE}` {where}", parameters=params)
+    return int(result.result_rows[0][0]) if result.result_rows else 0
+
+
 async def market_potential(section: str, start_date: date | None = None, end_date: date | None = None, limit: int = 1000) -> list[dict[str, Any]]:
     client = await get_async_client()
     clauses, params = [], {"lim": limit}

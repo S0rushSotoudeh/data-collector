@@ -10,6 +10,7 @@ from src.collectors.stock.transformer import best_limits_to_order_book_rows
 from src.db.clickhouse.stock import insert_stock_order_book
 from src.db.models.stock import StockInstrument
 from src.db.session import SessionLocal
+from src.services.operation_runs import RunProgressReporter
 
 
 async def get_active_stock_codes() -> list[str]:
@@ -59,6 +60,7 @@ async def backfill_stock_order_books(
     end_date: date,
     instrument_codes: list[str] | None = None,
     concurrency: int = 5,
+    progress: RunProgressReporter | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     total_rows = 0
@@ -66,16 +68,24 @@ async def backfill_stock_order_books(
 
     async with StockTsetmcClient(concurrency=concurrency) as client:
         codes = instrument_codes or await get_active_stock_codes()
+        if progress:
+            progress.set_total(len(codes) * ((end_date - start_date).days + 1))
 
         current = start_date
         while current <= end_date:
             for code in codes:
+                rows = 0
+                warning_count = 0
                 try:
                     rows = await fetch_stock_order_book_for_date(client, code, current)
                     total_rows += rows
                     total_days_tried += 1
                 except Exception as e:
                     errors.append(f"{code}@{current.isoformat()}: {e}")
+                    warning_count = 1
+                finally:
+                    if progress:
+                        progress.advance(output_count=rows, warning_count=warning_count)
             current += timedelta(days=1)
 
     return {

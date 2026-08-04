@@ -14,6 +14,7 @@ from src.db.session import SessionLocal
 
 
 RUN_STATUSES = ("queued", "running", "completed", "failed", "skipped")
+PROGRESS_UPDATE_PERCENT = 5
 
 
 @dataclass(frozen=True)
@@ -21,6 +22,48 @@ class TaskSpec:
     family: str
     run_type: str
     target: str
+
+
+class RunProgressReporter:
+    """Accumulate task progress and persist it in coarse, bounded batches."""
+
+    def __init__(self, run_id: str | uuid.UUID | None, *, percent_step: int = PROGRESS_UPDATE_PERCENT) -> None:
+        self.run_id = run_id
+        self.percent_step = max(1, min(100, int(percent_step)))
+        self.total = 0
+        self.current = 0
+        self.output_count = 0
+        self.warning_count = 0
+        self._last_persisted = 0
+
+    def set_total(self, total: int) -> None:
+        self.total = max(0, int(total))
+        if self.run_id:
+            update_progress(
+                self.run_id,
+                current=self.current,
+                total=self.total,
+                output_count=self.output_count,
+                warning_count=self.warning_count,
+            )
+
+    def advance(self, *, output_count: int = 0, warning_count: int = 0) -> None:
+        self.current += 1
+        self.output_count += max(0, int(output_count))
+        self.warning_count += max(0, int(warning_count))
+        if not self.run_id or not self.total:
+            return
+        batch_size = max(1, math.ceil(self.total * self.percent_step / 100))
+        if self.current < self.total and self.current - self._last_persisted < batch_size:
+            return
+        update_progress(
+            self.run_id,
+            current=min(self.current, self.total),
+            total=self.total,
+            output_count=self.output_count,
+            warning_count=self.warning_count,
+        )
+        self._last_persisted = self.current
 
 
 TASK_SPECS: dict[str, TaskSpec] = {

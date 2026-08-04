@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import date, datetime, timedelta
+from typing import Any, Awaitable, Callable
 
 from celery import shared_task
 
@@ -19,6 +20,34 @@ def _set_collection_run(run_id: str | None, status: str, result: dict | None = N
     else:
         update_run(run_id, status=status, error=error or "")
 
+
+def _collection_run_id(task: Any, explicit_run_id: str | None = None) -> str | None:
+    if explicit_run_id:
+        return explicit_run_id
+    headers = getattr(task.request, "headers", None) or {}
+    value = headers.get("operation_run_id")
+    return str(value) if value else None
+
+
+def _run_collection(
+    task: Any,
+    collect: Callable[[Any], Awaitable[dict]],
+    *,
+    explicit_run_id: str | None = None,
+) -> dict:
+    from src.services.operation_runs import RunProgressReporter
+
+    run_id = _collection_run_id(task, explicit_run_id)
+    progress = RunProgressReporter(run_id)
+    _set_collection_run(run_id, "running")
+    try:
+        result = asyncio.run(collect(progress))
+        _set_collection_run(run_id, "completed", result)
+        return result
+    except Exception as exc:
+        _set_collection_run(run_id, "failed", error=str(exc))
+        raise
+
 from src.collectors.bond.instrument_sync import sync_instruments_to_pg
 from src.collectors.bond.order_book_fetcher import (
     backfill_order_books,
@@ -36,145 +65,159 @@ from src.collectors.stock.order_book_fetcher import backfill_stock_order_books
 from src.collectors.stock.trade_fetcher import backfill_stock_trades
 
 
-@shared_task
-def sync_bond_instruments() -> dict:
-    return asyncio.run(sync_instruments_to_pg())
+@shared_task(bind=True)
+def sync_bond_instruments(self) -> dict:
+    return _run_collection(self, lambda progress: sync_instruments_to_pg(progress=progress))
 
 
-@shared_task
-def fetch_yesterday_bond_order_book() -> dict:
+@shared_task(bind=True)
+def fetch_yesterday_bond_order_book(self) -> dict:
     yesterday = date.today() - timedelta(days=1)
-    return asyncio.run(
-        backfill_order_books(start_date=yesterday, end_date=yesterday)
+    return _run_collection(
+        self,
+        lambda progress: backfill_order_books(start_date=yesterday, end_date=yesterday, progress=progress),
     )
 
 
-@shared_task
-def backfill_bond_order_books_task(start_date_str: str, end_date_str: str) -> dict:
+@shared_task(bind=True)
+def backfill_bond_order_books_task(self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
     start = date.fromisoformat(start_date_str)
     end = date.fromisoformat(end_date_str)
-    codes = asyncio.run(get_instrument_codes_active_in_range(start, end))
-    result = asyncio.run(
-        backfill_order_books(start_date=start, end_date=end, instrument_codes=codes)
-    )
-    result["instrument_count"] = len(codes)
-    return result
 
-
-@shared_task
-def fetch_yesterday_bond_trades() -> dict:
-    yesterday = date.today() - timedelta(days=1)
-    codes = asyncio.run(get_instrument_codes_active_in_range(yesterday, yesterday))
-    return asyncio.run(
-        backfill_trades(start_date=yesterday, end_date=yesterday, instrument_codes=codes)
-    )
-
-
-@shared_task
-def backfill_bond_trades_task(start_date_str: str, end_date_str: str) -> dict:
-    start = date.fromisoformat(start_date_str)
-    end = date.fromisoformat(end_date_str)
-    codes = asyncio.run(get_instrument_codes_active_in_range(start, end))
-    result = asyncio.run(
-        backfill_trades(start_date=start, end_date=end, instrument_codes=codes)
-    )
-    result["instrument_count"] = len(codes)
-    return result
-
-
-@shared_task
-def sync_option_instruments() -> dict:
-    return asyncio.run(sync_option_instruments_to_pg())
-
-
-@shared_task
-def sync_stock_instruments() -> dict:
-    return asyncio.run(sync_stock_instruments_to_pg())
-
-
-@shared_task
-def backfill_stock_order_books_task(start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
-    start = date.fromisoformat(start_date_str)
-    end = date.fromisoformat(end_date_str)
-    _set_collection_run(collection_run_id, "running")
-    try:
-        result = asyncio.run(backfill_stock_order_books(start_date=start, end_date=end))
-        _set_collection_run(collection_run_id, "completed", result)
-        return result
-    except Exception as exc:
-        _set_collection_run(collection_run_id, "failed", error=str(exc)); raise
-
-
-@shared_task
-def backfill_stock_trades_task(start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
-    start = date.fromisoformat(start_date_str)
-    end = date.fromisoformat(end_date_str)
-    _set_collection_run(collection_run_id, "running")
-    try:
-        result = asyncio.run(backfill_stock_trades(start_date=start, end_date=end))
-        _set_collection_run(collection_run_id, "completed", result)
-        return result
-    except Exception as exc:
-        _set_collection_run(collection_run_id, "failed", error=str(exc)); raise
-
-
-@shared_task
-def fetch_yesterday_stock_orderbook() -> dict:
-    yesterday = date.today() - timedelta(days=1)
-    return asyncio.run(backfill_stock_order_books(start_date=yesterday, end_date=yesterday))
-
-
-@shared_task
-def fetch_yesterday_stock_trades() -> dict:
-    yesterday = date.today() - timedelta(days=1)
-    return asyncio.run(backfill_stock_trades(start_date=yesterday, end_date=yesterday))
-
-
-@shared_task
-def fetch_yesterday_option_orderbook() -> dict:
-    yesterday = date.today() - timedelta(days=1)
-    return asyncio.run(
-        backfill_option_order_books(start_date=yesterday, end_date=yesterday)
-    )
-
-
-@shared_task
-def backfill_option_order_books_task(start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
-    start = date.fromisoformat(start_date_str)
-    end = date.fromisoformat(end_date_str)
-    codes = asyncio.run(get_option_codes_active_in_range(start, end))
-    _set_collection_run(collection_run_id, "running")
-    try:
-        result = asyncio.run(backfill_option_order_books(start_date=start, end_date=end, instrument_codes=codes))
+    async def collect(progress):
+        codes = await get_instrument_codes_active_in_range(start, end)
+        result = await backfill_order_books(start_date=start, end_date=end, instrument_codes=codes, progress=progress)
         result["instrument_count"] = len(codes)
-        _set_collection_run(collection_run_id, "completed", result)
         return result
-    except Exception as exc:
-        _set_collection_run(collection_run_id, "failed", error=str(exc)); raise
+
+    return _run_collection(self, collect, explicit_run_id=collection_run_id)
 
 
-@shared_task
-def fetch_yesterday_option_trades() -> dict:
+@shared_task(bind=True)
+def fetch_yesterday_bond_trades(self) -> dict:
     yesterday = date.today() - timedelta(days=1)
-    codes = asyncio.run(get_option_codes_active_in_range(yesterday, yesterday))
-    return asyncio.run(
-        backfill_option_trades(start_date=yesterday, end_date=yesterday, instrument_codes=codes)
+
+    async def collect(progress):
+        codes = await get_instrument_codes_active_in_range(yesterday, yesterday)
+        return await backfill_trades(
+            start_date=yesterday, end_date=yesterday, instrument_codes=codes, progress=progress,
+        )
+
+    return _run_collection(self, collect)
+
+
+@shared_task(bind=True)
+def backfill_bond_trades_task(self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+
+    async def collect(progress):
+        codes = await get_instrument_codes_active_in_range(start, end)
+        result = await backfill_trades(start_date=start, end_date=end, instrument_codes=codes, progress=progress)
+        result["instrument_count"] = len(codes)
+        return result
+
+    return _run_collection(self, collect, explicit_run_id=collection_run_id)
+
+
+@shared_task(bind=True)
+def sync_option_instruments(self) -> dict:
+    return _run_collection(self, lambda progress: sync_option_instruments_to_pg(progress=progress))
+
+
+@shared_task(bind=True)
+def sync_stock_instruments(self) -> dict:
+    return _run_collection(self, lambda progress: sync_stock_instruments_to_pg(progress=progress))
+
+
+@shared_task(bind=True)
+def backfill_stock_order_books_task(self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+    return _run_collection(
+        self,
+        lambda progress: backfill_stock_order_books(start_date=start, end_date=end, progress=progress),
+        explicit_run_id=collection_run_id,
     )
 
 
-@shared_task
-def backfill_option_trades_task(start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
+@shared_task(bind=True)
+def backfill_stock_trades_task(self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
     start = date.fromisoformat(start_date_str)
     end = date.fromisoformat(end_date_str)
-    codes = asyncio.run(get_option_codes_active_in_range(start, end))
-    _set_collection_run(collection_run_id, "running")
-    try:
-        result = asyncio.run(backfill_option_trades(start_date=start, end_date=end, instrument_codes=codes))
+    return _run_collection(
+        self,
+        lambda progress: backfill_stock_trades(start_date=start, end_date=end, progress=progress),
+        explicit_run_id=collection_run_id,
+    )
+
+
+@shared_task(bind=True)
+def fetch_yesterday_stock_orderbook(self) -> dict:
+    yesterday = date.today() - timedelta(days=1)
+    return _run_collection(
+        self,
+        lambda progress: backfill_stock_order_books(start_date=yesterday, end_date=yesterday, progress=progress),
+    )
+
+
+@shared_task(bind=True)
+def fetch_yesterday_stock_trades(self) -> dict:
+    yesterday = date.today() - timedelta(days=1)
+    return _run_collection(
+        self,
+        lambda progress: backfill_stock_trades(start_date=yesterday, end_date=yesterday, progress=progress),
+    )
+
+
+@shared_task(bind=True)
+def fetch_yesterday_option_orderbook(self) -> dict:
+    yesterday = date.today() - timedelta(days=1)
+    return _run_collection(
+        self,
+        lambda progress: backfill_option_order_books(start_date=yesterday, end_date=yesterday, progress=progress),
+    )
+
+
+@shared_task(bind=True)
+def backfill_option_order_books_task(self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+
+    async def collect(progress):
+        codes = await get_option_codes_active_in_range(start, end)
+        result = await backfill_option_order_books(start_date=start, end_date=end, instrument_codes=codes, progress=progress)
         result["instrument_count"] = len(codes)
-        _set_collection_run(collection_run_id, "completed", result)
         return result
-    except Exception as exc:
-        _set_collection_run(collection_run_id, "failed", error=str(exc)); raise
+
+    return _run_collection(self, collect, explicit_run_id=collection_run_id)
+
+
+@shared_task(bind=True)
+def fetch_yesterday_option_trades(self) -> dict:
+    yesterday = date.today() - timedelta(days=1)
+
+    async def collect(progress):
+        codes = await get_option_codes_active_in_range(yesterday, yesterday)
+        return await backfill_option_trades(
+            start_date=yesterday, end_date=yesterday, instrument_codes=codes, progress=progress,
+        )
+
+    return _run_collection(self, collect)
+
+
+@shared_task(bind=True)
+def backfill_option_trades_task(self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+
+    async def collect(progress):
+        codes = await get_option_codes_active_in_range(start, end)
+        result = await backfill_option_trades(start_date=start, end_date=end, instrument_codes=codes, progress=progress)
+        result["instrument_count"] = len(codes)
+        return result
+
+    return _run_collection(self, collect, explicit_run_id=collection_run_id)
 
 
 @shared_task

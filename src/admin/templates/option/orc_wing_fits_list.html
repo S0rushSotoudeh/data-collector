@@ -1,0 +1,25 @@
+{% extends "shared/admin_base.html" %}
+{% block custom_styles %}<style>
+.filter-card{margin-bottom:1.5rem}.table th,.table td{white-space:nowrap}.table th{font-size:.75rem;text-transform:uppercase}.table td{font-size:.8125rem;vertical-align:middle}.mono{font-family:'SF Mono','Cascadia Code','Consolas',monospace;text-align:right}.pagination-bar{display:flex;justify-content:space-between;align-items:center;gap:.5rem}.raw-data{max-height:24rem;overflow:auto;min-width:32rem}
+</style>{% endblock %}
+{% block content %}
+<div class="card filter-card"><div class="card-header"><h3 class="card-title">Filters</h3></div><div class="card-body">
+<form method="get" action="{{ request.url.path }}"><div class="row g-3">
+<div class="col-md-3"><label class="form-label">Run ID</label><input class="form-control" name="run_id" value="{{ run_id or '' }}"></div>
+<div class="col-md-2"><label class="form-label">Trade Date</label><input type="date" class="form-control" name="trade_date" value="{{ trade_date or '' }}"></div>
+<div class="col-md-2"><label class="form-label">Underlying</label><input class="form-control" name="underlying_instrument_code" value="{{ underlying_instrument_code or '' }}"></div>
+<div class="col-md-2"><label class="form-label">Expiry</label><input type="date" class="form-control" name="expiry_date" value="{{ expiry_date or '' }}"></div>
+<div class="col-md-1"><label class="form-label">Side</label><select class="form-select" name="side"><option value="">All</option><option value="bid" {% if side == 'bid' %}selected{% endif %}>Bid</option><option value="ask" {% if side == 'ask' %}selected{% endif %}>Ask</option></select></div>
+<div class="col-md-2"><label class="form-label">Converged</label><select class="form-select" name="converged"><option value="">All</option><option value="1" {% if converged == 1 %}selected{% endif %}>Yes</option><option value="0" {% if converged == 0 %}selected{% endif %}>No</option></select></div>
+<div class="col-md-3"><label class="form-label">Quality flag</label><input class="form-control" name="quality_flag" value="{{ quality_flag or '' }}" placeholder="e.g. fitted_bid_above_ask"></div>
+<div class="col-md-2 d-flex align-items-end gap-2"><button class="btn btn-primary">Search</button><a href="{{ request.url.path }}" class="btn btn-ghost-secondary">Reset</a></div>
+</div></form></div></div>
+<div class="card"><div class="card-header"><h3 class="card-title">ORC Wing Fits</h3><div class="card-actions text-muted">{{ total }} records</div></div><div class="table-responsive">
+<table class="table table-striped table-hover table-vcenter card-table"><thead><tr><th>Snapshot</th><th>Run ID</th><th>Underlying</th><th>Expiry / Side</th><th>Forward</th><th>DTE</th><th>vc</th><th>sc</th><th>pc</th><th>cc</th><th>dc</th><th>uc</th><th>RMSE</th><th>Points</th><th>Converged</th><th>Quality flags</th><th>All fields</th></tr></thead><tbody>
+{% for row in rows %}<tr>
+<td class="mono">{{ row.snapshot_time }}</td><td><code>{{ row.run_id }}</code></td><td><code>{{ row.underlying_instrument_code }}</code></td><td>{{ row.expiry_date }} / {{ row.side }}</td><td class="mono">{{ row.forward }}</td><td class="mono">{{ "{:.2f}".format(row.ttm_years*365.25) }}</td><td class="mono">{{ row.vc if row.vc is not none else '—' }}</td><td class="mono">{{ row.sc if row.sc is not none else '—' }}</td><td class="mono">{{ row.pc if row.pc is not none else '—' }}</td><td class="mono">{{ row.cc if row.cc is not none else '—' }}</td><td class="mono">{{ row.dc if row.dc is not none else '—' }}</td><td class="mono">{{ row.uc if row.uc is not none else '—' }}</td><td class="mono">{{ row.rmse if row.rmse is not none else '—' }}</td><td class="mono">{{ row.point_count }}</td>
+<td>{% if row.converged %}<span class="badge bg-green-lt">Yes</span>{% else %}<span class="badge bg-red-lt">No</span>{% endif %}</td><td>{{ row.quality_flags|join(', ') if row.quality_flags else '—' }}</td>
+<td><details><summary class="btn btn-sm btn-ghost-secondary">View</summary><div class="raw-data mt-2"><table class="table table-sm"><tbody>{% for key,value in row.items() %}<tr><th>{{ key }}</th><td class="mono">{{ value }}</td></tr>{% endfor %}</tbody></table></div></details></td>
+</tr>{% else %}<tr><td colspan="17" class="text-center text-muted py-4">No records found.</td></tr>{% endfor %}
+</tbody></table></div>{% if total > 0 %}<div class="card-footer"><div class="pagination-bar"><span class="text-muted">Showing {{ ((page-1)*page_size)+1 }}–{{ min(page*page_size,total) }} of {{ total }}</span><div class="btn-list">{% if page > 1 %}<a class="btn btn-sm" href="?{{ qs_page(page-1) }}">Prev</a>{% endif %}<span class="btn btn-sm disabled">Page {{ page }} of {{ total_pages }}</span>{% if page < total_pages %}<a class="btn btn-sm" href="?{{ qs_page(page+1) }}">Next</a>{% endif %}</div></div></div>{% endif %}</div>
+{% endblock %}

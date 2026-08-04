@@ -11,12 +11,14 @@ from src.collectors.stock.transformer import (
 )
 from src.db.models.stock import StockInstrument
 from src.db.session import SessionLocal
+from src.services.operation_runs import RunProgressReporter
 
 logger = logging.getLogger(__name__)
 
 
 async def sync_stock_instruments_to_pg(
     client: StockTsetmcClient | None = None,
+    progress: RunProgressReporter | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     synced = 0
@@ -30,8 +32,11 @@ async def sync_stock_instruments_to_pg(
         assert client is not None
         market_watch = await client.get_market_watch()
         stock_items = [item for item in market_watch if is_stock(item)]
+        if progress:
+            progress.set_total(len(stock_items))
 
         for item in stock_items:
+            warning_count = 0
             try:
                 code = item.ins_code
                 partial_attrs = market_watch_to_pg_attrs(item)
@@ -47,6 +52,10 @@ async def sync_stock_instruments_to_pg(
                 synced += 1
             except Exception as e:
                 errors.append(f"{getattr(item, 'ins_code', '?')}: {e}")
+                warning_count = 1
+            finally:
+                if progress:
+                    progress.advance(output_count=1 if warning_count == 0 else 0, warning_count=warning_count)
 
         return {"synced": synced, "errors": errors}
     finally:

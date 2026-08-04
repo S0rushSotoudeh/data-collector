@@ -12,6 +12,7 @@ from src.admin.option.option_clickhouse_views import OptionOrderBookView, Option
 from src.admin.option.parity_views import OptionsAnalyticsView
 from src.admin.option.parity_clickhouse_views import ParityAnalysisSnapshotsView
 from src.admin.option.iv_views import IVSurfaceView, OptionsMarketPotentialView
+from src.admin.option.iv_clickhouse_views import OptionIVPointsView, ORCWingFitsView
 from src.admin.operations_views import OptionPricingConventionAdmin
 from src.admin.run_views import (
     CollectionRunsView, IVORCRunsView, MarketPotentialRunsView, ParityRunsView,
@@ -44,6 +45,8 @@ def create_admin(
     admin.add_view(OptionsAnalyticsView)
     admin.add_view(OptionsMarketPotentialView)
     admin.add_view(IVSurfaceView)
+    admin.add_view(OptionIVPointsView)
+    admin.add_view(ORCWingFitsView)
     admin.add_view(OptionPricingConventionAdmin)
     admin.add_view(ParityRunsView)
     admin.add_view(ParityAnalysisSnapshotsView)

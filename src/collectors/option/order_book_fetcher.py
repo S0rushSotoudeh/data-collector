@@ -2,7 +2,7 @@ import asyncio
 from datetime import date, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from src.collectors.option.market_watch_client import OptionTsetmcClient
@@ -10,6 +10,7 @@ from src.collectors.option.transformer import best_limits_to_order_book_rows
 from src.db.clickhouse.option import insert_option_order_book
 from src.db.models.option import OptionInstrument
 from src.db.session import SessionLocal
+from src.services.operation_runs import RunProgressReporter
 
 
 async def get_active_option_codes() -> list[str]:
@@ -29,8 +30,14 @@ async def get_option_codes_active_in_range(
     with SessionLocal() as session:
         stmt = (
             select(OptionInstrument.instrument_code)
-            .where(OptionInstrument.last_trade_date >= start_date)
-            .where(OptionInstrument.last_trade_date.isnot(None))
+            .where(OptionInstrument.expiry_date.isnot(None))
+            .where(OptionInstrument.expiry_date >= start_date)
+            .where(
+                or_(
+                    OptionInstrument.listing_date.is_(None),
+                    OptionInstrument.listing_date <= end_date,
+                )
+            )
         )
         rows = session.execute(stmt).all()
         return [row[0] for row in rows]
@@ -59,27 +66,44 @@ async def backfill_option_order_books(
     end_date: date,
     instrument_codes: list[str] | None = None,
     concurrency: int = 5,
+    progress: RunProgressReporter | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     total_rows = 0
     total_days_tried = 0
+    empty_responses = 0
 
     async with OptionTsetmcClient(concurrency=concurrency) as client:
-        codes = instrument_codes or await get_active_option_codes()
+        codes = (
+            instrument_codes
+            if instrument_codes is not None
+            else await get_active_option_codes()
+        )
+        if progress:
+            progress.set_total(len(codes) * ((end_date - start_date).days + 1))
 
         current = start_date
         while current <= end_date:
             for code in codes:
+                rows = 0
+                warning_count = 0
                 try:
                     rows = await fetch_option_order_book_for_date(client, code, current)
                     total_rows += rows
                     total_days_tried += 1
+                    if rows == 0:
+                        empty_responses += 1
                 except Exception as e:
                     errors.append(f"{code}@{current.isoformat()}: {e}")
+                    warning_count = 1
+                finally:
+                    if progress:
+                        progress.advance(output_count=rows, warning_count=warning_count)
             current += timedelta(days=1)
 
     return {
         "total_days_tried": total_days_tried,
         "total_rows": total_rows,
+        "empty_responses": empty_responses,
         "errors": errors,
     }

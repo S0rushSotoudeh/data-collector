@@ -7,6 +7,7 @@ from src.collectors.option.order_book_fetcher import (
     backfill_option_order_books,
     fetch_option_order_book_for_date,
     get_active_option_codes,
+    get_option_codes_active_in_range,
 )
 
 
@@ -31,6 +32,27 @@ class TestGetActiveOptionCodes:
 
         codes = await get_active_option_codes()
         assert codes == []
+
+
+class TestGetOptionCodesActiveInRange:
+    @patch("src.collectors.option.order_book_fetcher.SessionLocal")
+    async def test_filters_by_contract_lifetime_not_last_trade_date(
+        self, mock_session_local: MagicMock
+    ) -> None:
+        mock_session = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_session
+        mock_session.execute.return_value.all.return_value = [("code1",)]
+
+        codes = await get_option_codes_active_in_range(
+            date(2026, 7, 30), date(2026, 7, 31)
+        )
+
+        assert codes == ["code1"]
+        statement = mock_session.execute.call_args.args[0]
+        sql = str(statement.compile(compile_kwargs={"literal_binds": True}))
+        assert "option_instruments.expiry_date >= '2026-07-30'" in sql
+        assert "option_instruments.listing_date <= '2026-07-31'" in sql
+        assert "last_trade_date" not in sql
 
 
 class TestFetchOptionOrderBookForDate:
@@ -82,6 +104,19 @@ class TestFetchOptionOrderBookForDate:
         assert result == 0
         mock_insert.assert_not_called()
 
+    @patch("src.collectors.option.order_book_fetcher.insert_option_order_book")
+    async def test_insert_failure_is_not_reported_as_saved(
+        self, mock_insert: MagicMock, mock_client: MagicMock
+    ) -> None:
+        mock_insert.side_effect = RuntimeError("ClickHouse insert failed")
+
+        with pytest.raises(RuntimeError, match="ClickHouse insert failed"):
+            await fetch_option_order_book_for_date(
+                client=mock_client,
+                instrument_code="code",
+                trade_date=date(2026, 7, 1),
+            )
+
 
 class TestBackfillOptionOrderBooks:
     @patch("src.collectors.option.order_book_fetcher.get_active_option_codes")
@@ -125,8 +160,27 @@ class TestBackfillOptionOrderBooks:
 
         assert result["total_days_tried"] == 2
         assert result["total_rows"] == 2
+        assert result["empty_responses"] == 1
         assert result["errors"] == []
         mock_get_codes.assert_not_called()
+
+    @patch("src.collectors.option.order_book_fetcher.get_active_option_codes")
+    async def test_explicit_empty_codes_do_not_fall_back_to_all_active(
+        self, mock_get_codes: AsyncMock
+    ) -> None:
+        result = await backfill_option_order_books(
+            start_date=date(2026, 7, 30),
+            end_date=date(2026, 7, 31),
+            instrument_codes=[],
+        )
+
+        assert result == {
+            "total_days_tried": 0,
+            "total_rows": 0,
+            "empty_responses": 0,
+            "errors": [],
+        }
+        mock_get_codes.assert_not_awaited()
 
     @patch("src.collectors.option.order_book_fetcher.get_active_option_codes")
     @patch("src.collectors.option.order_book_fetcher.insert_option_order_book")
