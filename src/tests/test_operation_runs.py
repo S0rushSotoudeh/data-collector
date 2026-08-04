@@ -111,6 +111,54 @@ def test_progress_reporter_persists_every_five_percent_and_at_completion() -> No
         assert update.call_args.kwargs["current"] == 100
 
 
+def test_progress_reporter_checkpoints_absolute_progress_and_result() -> None:
+    run_id = uuid.uuid4()
+    with patch("src.services.operation_runs.update_progress") as update:
+        progress = RunProgressReporter(run_id)
+        progress.set_total(100)
+        for current in range(1, 101):
+            progress.checkpoint(
+                current,
+                output_count=current * 2,
+                warning_count=current // 10,
+                result={"fit_count": current},
+            )
+
+        assert [call.kwargs["current"] for call in update.call_args_list] == [
+            0, *range(5, 101, 5)
+        ]
+        assert update.call_args.kwargs["output_count"] == 200
+        assert update.call_args.kwargs["warning_count"] == 10
+        assert update.call_args.kwargs["result"] == {"fit_count": 100}
+
+
+def test_iv_running_update_can_refresh_local_state_without_database_write() -> None:
+    from src.analytics.iv_engine import _update_run
+
+    stored = {
+        "run_id": str(uuid.uuid4()),
+        "completed_snapshot_count": 5,
+        "point_count": 10,
+        "fit_count": 3,
+        "warning_count": 1,
+    }
+    with (
+        patch("src.analytics.iv_engine.update_progress") as progress,
+        patch("src.analytics.iv_engine.update_run") as update,
+    ):
+        updated = _update_run(
+            None,
+            stored,
+            "running",
+            persist_progress=False,
+            completed_snapshot_count=10,
+        )
+
+    assert updated["completed_snapshot_count"] == 10
+    progress.assert_not_called()
+    update.assert_not_called()
+
+
 def test_analysis_engines_no_longer_import_legacy_run_writers() -> None:
     import src.analytics.iv_engine as iv_engine
     import src.analytics.parity_engine as parity_engine

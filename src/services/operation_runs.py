@@ -51,10 +51,34 @@ class RunProgressReporter:
         self.current += 1
         self.output_count += max(0, int(output_count))
         self.warning_count += max(0, int(warning_count))
+        self.checkpoint(
+            self.current,
+            output_count=self.output_count,
+            warning_count=self.warning_count,
+        )
+
+    def checkpoint(
+        self,
+        current: int,
+        *,
+        total: int | None = None,
+        output_count: int | None = None,
+        warning_count: int | None = None,
+        result: dict[str, Any] | None = None,
+        force: bool = False,
+    ) -> None:
+        """Persist an absolute progress position at the configured interval."""
+        if total is not None:
+            self.total = max(0, int(total))
+        self.current = max(self.current, max(0, int(current)))
+        if output_count is not None:
+            self.output_count = max(0, int(output_count))
+        if warning_count is not None:
+            self.warning_count = max(0, int(warning_count))
         if not self.run_id or not self.total:
             return
         batch_size = max(1, math.ceil(self.total * self.percent_step / 100))
-        if self.current < self.total and self.current - self._last_persisted < batch_size:
+        if not force and self.current < self.total and self.current - self._last_persisted < batch_size:
             return
         update_progress(
             self.run_id,
@@ -62,6 +86,7 @@ class RunProgressReporter:
             total=self.total,
             output_count=self.output_count,
             warning_count=self.warning_count,
+            result=result,
         )
         self._last_persisted = self.current
 

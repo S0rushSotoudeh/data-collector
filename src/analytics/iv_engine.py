@@ -22,6 +22,7 @@ from src.db.models.option import OptionInstrument
 from src.db.session import SessionLocal
 from src.services.operation_runs import fail_run as fail_operation_run
 from src.services.operation_runs import get_run, run_to_dict, update_progress, update_run
+from src.services.operation_runs import RunProgressReporter
 
 TEHRAN = ZoneInfo("Asia/Tehran")
 
@@ -33,19 +34,26 @@ def _run_row(client, run_id: str) -> dict[str, Any]:
     return run_to_dict(operation)
 
 
-def _update_run(client, stored: dict[str, Any], status: str, **values: Any) -> dict[str, Any]:
+def _update_run(
+    client,
+    stored: dict[str, Any],
+    status: str,
+    *,
+    persist_progress: bool = True,
+    **values: Any,
+) -> dict[str, Any]:
     updated = dict(stored)
     updated.update(values, status=status, updated_at=datetime.now(TEHRAN))
     result = {key: updated.get(key, 0) for key in (
         "completed_snapshot_count", "point_count", "fit_count", "warning_count", "quality_summary"
     )}
-    if status == "running":
+    if status == "running" and persist_progress:
         update_progress(
             updated["run_id"], current=int(updated.get("completed_snapshot_count", 0) or 0),
             output_count=int(updated.get("point_count", 0) or 0),
             warning_count=int(updated.get("warning_count", 0) or 0), result=result,
         )
-    else:
+    elif status != "running":
         update_run(
             updated["run_id"], status=status, result=result,
             progress_current=int(updated.get("completed_snapshot_count", 0) or 0),
@@ -135,7 +143,10 @@ def process_run(run_id: str) -> dict[str, int]:
         raise RuntimeError("unsupported IV model version")
     config = IVSurfaceRunConfig.model_validate_json(stored["config_json"])
     convention, instruments = _load_inputs(config)
-    stored = _update_run(client, stored, "running", error="")
+    stored = _update_run(client, stored, "running", persist_progress=False, error="")
+    total_snapshots = int(stored.get("progress_total") or stored.get("target_snapshot_count") or 0)
+    progress = RunProgressReporter(run_id)
+    progress.set_total(total_snapshots)
     codes = [item.instrument_code for item in instruments]
     metadata = {item.instrument_code: item for item in instruments}
     pairs: dict[tuple[date, float], dict[str, str]] = defaultdict(dict)
@@ -152,6 +163,7 @@ def process_run(run_id: str) -> dict[str, int]:
         curves = _curve_rows(client, day, config.session_end)
         points_batch: list[dict[str, Any]] = []
         fits_batch: list[dict[str, Any]] = []
+        pending_fit_count = 0
         for snapshot_index, snapshot in enumerate(snapshots):
             snapshot_quotes = {
                 code: _quote(states[code][snapshot_index], snapshot, config.max_quote_age_seconds) for code in codes
@@ -251,6 +263,7 @@ def process_run(run_id: str) -> dict[str, int]:
                 }
                 fitted[(expiry, side)] = fit
                 fits_batch.append(fit)
+                pending_fit_count += int(fit["converged"])
             for expiry in {key[0] for key in fitted}:
                 bid, ask = fitted.get((expiry, "bid")), fitted.get((expiry, "ask"))
                 if bid and ask and bid["converged"] and ask["converged"]:
@@ -263,11 +276,23 @@ def process_run(run_id: str) -> dict[str, int]:
                         ask["quality_flags"].append("fitted_bid_above_ask")
                         counts["warning_count"] += 1
             counts["completed_snapshot_count"] += 1
+            progress.checkpoint(
+                counts["completed_snapshot_count"],
+                total=total_snapshots,
+                output_count=counts["point_count"] + len(points_batch),
+                warning_count=counts["warning_count"],
+                result={
+                    "completed_snapshot_count": counts["completed_snapshot_count"],
+                    "point_count": counts["point_count"] + len(points_batch),
+                    "fit_count": counts["fit_count"] + pending_fit_count,
+                    "warning_count": counts["warning_count"],
+                },
+            )
         insert_points(points_batch, client)
         insert_fits(fits_batch, client)
         counts["point_count"] += len(points_batch)
-        counts["fit_count"] += sum(int(row["converged"]) for row in fits_batch)
-        stored = _update_run(client, stored, "running", **counts)
+        counts["fit_count"] += pending_fit_count
+        stored = _update_run(client, stored, "running", persist_progress=False, **counts)
         day += timedelta(days=1)
     _update_run(client, stored, "completed", quality_summary=json.dumps(counts), error="", **counts)
     return counts
