@@ -22,6 +22,7 @@ def test_all_tasks_registered() -> None:
         "src.tasks.fetch_yesterday_option_trades",
         "src.tasks.backfill_option_trades_task",
             "src.tasks.run_parity_analysis",
+            "src.tasks.run_box_spread_analysis",
             "src.tasks.run_iv_surface",
             "src.tasks.fetch_yesterday_stock_orderbook",
             "src.tasks.fetch_yesterday_stock_trades",

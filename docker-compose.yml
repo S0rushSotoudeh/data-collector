@@ -42,7 +42,6 @@ services:
       context: .
       dockerfile: Dockerfile
       target: development
-    container_name: dc-celery-worker
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./src:/app/src
@@ -57,7 +56,7 @@ services:
       clickhouse:
         condition: service_healthy
     entrypoint: ["/app/entrypoint-celery.sh"]
-    command: ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    command: ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
     restart: unless-stopped
 
   celery-beat:

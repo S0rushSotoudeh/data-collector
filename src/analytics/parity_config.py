@@ -20,6 +20,9 @@ class ParityRunConfig(BaseModel):
     max_quote_age_seconds: int = Field(60, ge=0, le=86400)
     expiry_cutoff: time = time(12, 30)
     multiplier: int = Field(..., gt=0)
+    target_package_count: int = Field(1, ge=1, le=1_000_000)
+    max_cross_leg_skew_seconds: int = Field(2, ge=0, le=1800)
+    settlement_cost_per_contract: float = Field(0, ge=0)
     tick_size: float | None = Field(None, gt=0)
     minimum_ytm_spread_bps: float = Field(0, ge=0)
     funding_source: Literal["curve", "manual", "mixed"] = "curve"

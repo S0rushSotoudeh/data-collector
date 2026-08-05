@@ -63,6 +63,9 @@ class OperationRunsView(BaseView):
             if self.family == "parity":
                 row["detail_url"] = f"/admin/parity-analysis-snapshots?run_id={item.run_id}"
                 row["detail_label"] = "Snapshots"
+            elif self.family == "box_spread":
+                row["detail_url"] = f"/admin/options-box-spread?run_id={item.run_id}"
+                row["detail_label"] = "Visualization"
             elif self.family == "iv_orc":
                 row["detail_url"] = f"/admin/options-iv-surface?run_id={item.run_id}"
                 row["detail_label"] = "Visualization"
@@ -154,4 +157,18 @@ class IVORCRunsView(OperationRunsView):
 
     @expose("/iv-orc-runs", methods=["GET"])
     async def iv_orc_runs(self, request: Request) -> HTMLResponse:
+        return await self._runs(request)
+
+
+class BoxSpreadRunsView(OperationRunsView):
+    name = "Box-Spread Runs"
+    identity = "box-spread-runs"
+    icon = "fa-solid fa-list-check"
+    category = "Options Analytics"
+    family = "box_spread"
+    page_title = "Box-Spread Runs"
+    page_subtitle = "Immutable focused-pair implied-rate replays and their execution classifications"
+
+    @expose("/box-spread-runs", methods=["GET"])
+    async def box_spread_runs(self, request: Request) -> HTMLResponse:
         return await self._runs(request)

@@ -7,8 +7,9 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from src.analytics.parity import (
-    CALCULATION_VERSION, Book, calculate, validate_book,
+    CALCULATION_VERSION, Book, calculate, calculate_v5, validate_book,
 )
+from src.analytics.depth import DepthBook, DepthLevel
 from src.analytics.parity_config import ParityRunConfig
 from src.analytics.yield_curve import ns_yield
 from src.db.clickhouse import get_client
@@ -89,6 +90,45 @@ def _quotes(client, table: str, code: str, day: date, end: time) -> list[tuple]:
     ).result_rows
 
 
+def _depth_quotes(client, table: str, code: str, day: date, end: time) -> list[tuple[int, DepthBook]]:
+    rows = client.query(
+        f"SELECT trade_time, depth_level, bid_price, bid_volume, bid_order_count, "
+        f"ask_price, ask_volume, ask_order_count FROM `{table}` FINAL "
+        "WHERE instrument_code = {code:String} AND trade_date = {day:Date} "
+        "AND depth_level <= 5 AND trade_time <= {end:UInt32} ORDER BY trade_time, depth_level",
+        parameters={"code": code, "day": day, "end": hhmmss(end)},
+    ).result_rows
+    grouped: dict[int, list[DepthLevel]] = {}
+    for raw in rows:
+        if len(raw) == 5:  # Compatibility for focused engine mocks using the former level-one shape.
+            event_time, bid, ask, bid_volume, ask_volume = raw
+            level = DepthLevel(1, float(bid), int(bid_volume), 0, float(ask), int(ask_volume), 0)
+        else:
+            event_time, depth, bid, bid_volume, bid_orders, ask, ask_volume, ask_orders = raw
+            level = DepthLevel(int(depth), float(bid), int(bid_volume), int(bid_orders), float(ask), int(ask_volume), int(ask_orders))
+        grouped.setdefault(int(event_time), []).append(level)
+    return [
+        (event_time, DepthBook(
+            datetime.combine(day, time_from_hhmmss(event_time), TEHRAN),
+            tuple(sorted(levels, key=lambda item: item.level)),
+        ))
+        for event_time, levels in sorted(grouped.items())
+    ]
+
+
+def _depth_states(events: list[tuple[int, DepthBook]], snapshots: list[datetime]) -> list[DepthBook | None]:
+    output: list[DepthBook | None] = []
+    index = 0
+    current = None
+    for snapshot in snapshots:
+        cutoff = hhmmss(snapshot.timetz().replace(tzinfo=None))
+        while index < len(events) and events[index][0] <= cutoff:
+            current = events[index][1]
+            index += 1
+        output.append(current)
+    return output
+
+
 def _curves(client, day: date, end: time) -> dict[str, list[tuple]]:
     rows = client.query(
         "SELECT trade_time, curve_side, beta0, beta1, beta2, lambda, rmse, n_bonds, converged "
@@ -122,6 +162,24 @@ def _quote_fields(prefix: str, row: tuple | None, snapshot: datetime) -> tuple[d
         f"{prefix}_age_seconds": max(0, int((snapshot - source).total_seconds())),
     }
     return fields, Book(float(row[1]), float(row[2]), int(row[3]), int(row[4]))
+
+
+def _depth_quote_fields(prefix: str, book: DepthBook | None, snapshot: datetime) -> dict[str, Any]:
+    if book is None or book.best is None:
+        return {
+            f"{prefix}_{key}": None for key in (
+                "bid", "ask", "bid_volume", "ask_volume", "source_time", "age_seconds"
+            )
+        } | {f"{prefix}_bid_depth_volume": 0, f"{prefix}_ask_depth_volume": 0}
+    best = book.best
+    return {
+        f"{prefix}_bid": best.bid_price, f"{prefix}_ask": best.ask_price,
+        f"{prefix}_bid_volume": best.bid_volume, f"{prefix}_ask_volume": best.ask_volume,
+        f"{prefix}_source_time": book.source_time,
+        f"{prefix}_age_seconds": max(0, int((snapshot - book.source_time).total_seconds())),
+        f"{prefix}_bid_depth_volume": book.total_volume("sell"),
+        f"{prefix}_ask_depth_volume": book.total_volume("buy"),
+    }
 
 
 def _curve_fields(prefix: str, curve: tuple | None, snapshot: datetime) -> dict[str, Any]:
@@ -185,9 +243,9 @@ def process_run(run_id: str) -> dict[str, int]:
         day_start = config.start_time
         day_end = config.end_time
         snapshots = aligned_snapshots(day, day_start, day_end, config.interval_seconds)
-        stocks = latest_state_rows(_quotes(client, "stock_order_book", config.underlying_instrument_code, day, day_end), snapshots)
-        calls = latest_state_rows(_quotes(client, "option_order_book", config.call_instrument_code, day, day_end), snapshots)
-        puts = latest_state_rows(_quotes(client, "option_order_book", config.put_instrument_code, day, day_end), snapshots)
+        stocks = _depth_states(_depth_quotes(client, "stock_order_book", config.underlying_instrument_code, day, day_end), snapshots)
+        calls = _depth_states(_depth_quotes(client, "option_order_book", config.call_instrument_code, day, day_end), snapshots)
+        puts = _depth_states(_depth_quotes(client, "option_order_book", config.put_instrument_code, day, day_end), snapshots)
         curves = _curves(client, day, day_end)
         expiry_at = datetime.combine(expiry_date, config.expiry_cutoff, TEHRAN)
         for snapshot, stock_row, call_row, put_row in zip(snapshots, stocks, calls, puts):
@@ -200,19 +258,25 @@ def process_run(run_id: str) -> dict[str, int]:
                 "call_instrument_code": config.call_instrument_code, "put_instrument_code": config.put_instrument_code,
                 "strike": strike, "expiry_at": expiry_at, "ttm_years": ttm,
                 "multiplier": config.multiplier, "tick_size": config.tick_size,
+                "target_package_count": config.target_package_count,
                 "required_margin": 0.0, "calculated_at": datetime.now(TEHRAN),
                 "calculation_version": CALCULATION_VERSION,
                 **{f"{name}_fee": value for name, value in fees.__dict__.items()},
             }
-            books = {}
-            for name, raw in (("stock", stock_row), ("call", call_row), ("put", put_row)):
-                fields, book = _quote_fields(name, raw, snapshot); row.update(fields); books[name] = book
+            books: dict[str, DepthBook | None] = {}
+            for name, book in (("stock", stock_row), ("call", call_row), ("put", put_row)):
+                fields = _depth_quote_fields(name, book, snapshot); row.update(fields); books[name] = book
                 if book is None:
                     reasons.append(f"missing_{name}_quote")
                 else:
-                    reasons.extend(validate_book(book, name))
+                    reasons.extend(book.validation_reasons(name))
                     if fields[f"{name}_age_seconds"] > config.max_quote_age_seconds:
                         reasons.append(f"stale_{name}_quote")
+            source_times = [book.source_time for book in books.values() if book is not None]
+            skew = int((max(source_times) - min(source_times)).total_seconds()) if len(source_times) == 3 else None
+            row["cross_leg_skew_seconds"] = skew
+            if skew is not None and skew > config.max_cross_leg_skew_seconds:
+                reasons.append("cross_leg_quote_skew")
             if snapshot >= expiry_at:
                 reasons.append("option_expired")
             elif (expiry_at - snapshot).total_seconds() < 86400:
@@ -226,21 +290,24 @@ def process_run(run_id: str) -> dict[str, int]:
             row.update(borrowing_rate=borrowing, borrowing_source=borrowing_source)
             if reasons:
                 for key in SNAPSHOT_COLUMNS:
-                    if key.startswith(("make_call_ask_", "make_put_bid_", "make_underlying_bid_")) or key == "pv_borrowing":
+                    if key.startswith(("make_call_ask_", "make_put_bid_", "make_underlying_bid_", "direct_take_")) or key == "pv_borrowing":
                         row.setdefault(key, [] if key.endswith("limiting_legs") else None)
+                for key in ("direct_take_capacity", "direct_take_opportunity", *[f"{s}_{f}" for s in ("make_call_ask", "make_put_bid", "make_underlying_bid") for f in ("quoteable", "queue_ahead_volume")]):
+                    row[key] = 0
                 row["quality_status"] = "invalid"; counts["invalid_count"] += 1
             else:
-                values = calculate(
+                values = calculate_v5(
                     call=books["call"], put=books["put"], stock=books["stock"], strike=strike,
                     ttm_years=ttm, borrowing_rate=borrowing, fees=fees,
                     minimum_ytm_spread_bps=config.minimum_ytm_spread_bps,
-                    multiplier=config.multiplier, tick_size=config.tick_size,
+                    multiplier=config.multiplier, target_packages=config.target_package_count,
+                    settlement_cost_per_contract=config.settlement_cost_per_contract, tick_size=config.tick_size,
                 )
                 row.update(values)
                 row["quality_status"] = "warning" if warnings else "valid"
                 counts["valid_count"] += 1
                 if warnings: counts["warning_count"] += 1
-                if any(values[f"{strategy}_opportunity"] for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid")):
+                if values["direct_take_opportunity"] or any(values[f"{strategy}_quoteable"] for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid")):
                     counts["opportunity_count"] += 1
             row["quality_reasons"] = reasons; row["warnings"] = warnings
             for key in SNAPSHOT_COLUMNS:

@@ -318,6 +318,22 @@ def run_parity_analysis(run_id: str) -> dict:
 
 
 @shared_task
+def run_box_spread_analysis(run_id: str) -> dict:
+    """Replay one selected box-spread pair without placing orders."""
+    from src.analytics.box_spread_engine import fail_run, process_run
+
+    try:
+        return process_run(run_id)
+    except Exception as exc:
+        logger.exception("Box-spread analysis run %s failed", run_id)
+        try:
+            fail_run(run_id, str(exc))
+        except Exception:
+            logger.exception("Could not mark box-spread run %s failed", run_id)
+        raise
+
+
+@shared_task
 def run_iv_surface(run_id: str) -> dict:
     """Process a manually submitted immutable historical IV replay."""
     from src.analytics.iv_engine import fail_run, process_run

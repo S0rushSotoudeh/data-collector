@@ -111,6 +111,7 @@ TASK_SPECS: dict[str, TaskSpec] = {
     "src.tasks.backfill_yield_curves": TaskSpec("yield_curve", "yield_curve.backfill", "yield_curve"),
     "src.tasks.compute_option_market_potential_daily": TaskSpec("market_potential", "market_potential.daily", "option_market_potential"),
     "src.tasks.run_parity_analysis": TaskSpec("parity", "parity.analysis", "put_call_parity"),
+    "src.tasks.run_box_spread_analysis": TaskSpec("box_spread", "box_spread.analysis", "box_spread"),
     "src.tasks.run_iv_surface": TaskSpec("iv_orc", "iv_orc.surface", "iv_surface_orc_wing"),
 }
 

@@ -4,6 +4,7 @@ import uuid
 
 from src.admin._render import _TEMPLATE_ENV
 from src.admin.run_views import (
+    BoxSpreadRunsView,
     CollectionRunsView,
     IVORCRunsView,
     MarketPotentialRunsView,
@@ -28,10 +29,11 @@ def test_family_pages_share_one_run_view_contract() -> None:
         MarketPotentialRunsView,
         ParityRunsView,
         IVORCRunsView,
+        BoxSpreadRunsView,
     )
     assert all(issubclass(view, OperationRunsView) for view in views)
     assert {view.family for view in views} == {
-        "collection", "yield_curve", "market_potential", "parity", "iv_orc",
+        "collection", "yield_curve", "market_potential", "parity", "iv_orc", "box_spread",
     }
     _TEMPLATE_ENV.get_template("operations/run_list.html")
 

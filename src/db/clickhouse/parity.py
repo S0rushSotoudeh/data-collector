@@ -34,6 +34,11 @@ SNAPSHOT_COLUMNS = [
     "borrowing_beta2", "borrowing_lambda", "borrowing_converged", "borrowing_n_bonds", "borrowing_rmse",
     "stock_buy_fee", "stock_sell_fee", "call_buy_fee", "call_sell_fee", "put_buy_fee", "put_sell_fee",
     "pv_borrowing", "target_ytm", "target_capital_per_share",
+    "target_package_count", "cross_leg_skew_seconds",
+    "stock_bid_depth_volume", "stock_ask_depth_volume", "call_bid_depth_volume", "call_ask_depth_volume", "put_bid_depth_volume", "put_ask_depth_volume",
+    "direct_take_capital_per_share", "direct_take_capital_per_contract", "direct_take_total_capital", "direct_take_opening_fee",
+    "direct_take_expiry_profit_per_share", "direct_take_expiry_profit_per_contract", "direct_take_total_expiry_profit",
+    "direct_take_holding_return", "direct_take_ytm", "direct_take_ytm_spread_bps", "direct_take_capacity", "direct_take_opportunity",
     *[f"{strategy}_{field}" for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid") for field in (
         "maker_price", "gross_edge", "opening_fee", "estimated_closing_fee", "net_edge", "surplus_edge",
         "gross_edge_per_contract", "net_edge_per_contract", "surplus_edge_per_contract", "total_value",
@@ -43,6 +48,7 @@ SNAPSHOT_COLUMNS = [
         "expiry_profit_per_share", "expiry_profit_per_contract", "total_expiry_profit",
         "holding_return", "ytm", "ytm_spread_bps")],
     *[f"{strategy}_{field}" for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid") for field in ("opportunity", "capacity", "limiting_legs")],
+    *[f"{strategy}_{field}" for strategy in ("make_call_ask", "make_put_bid", "make_underlying_bid") for field in ("quoteable", "queue_ahead_volume")],
     "quality_status", "quality_reasons", "warnings", "calculated_at", "calculation_version",
 ]
 
@@ -95,9 +101,17 @@ CREATE TABLE IF NOT EXISTS `{SNAPSHOTS_TABLE}` (
  stock_buy_fee Float64, stock_sell_fee Float64, call_buy_fee Float64, call_sell_fee Float64,
  put_buy_fee Float64, put_sell_fee Float64,
  pv_borrowing Nullable(Float64), target_ytm Nullable(Float64), target_capital_per_share Nullable(Float64),
+ target_package_count UInt64 DEFAULT 1, cross_leg_skew_seconds Nullable(UInt32),
+ stock_bid_depth_volume UInt64 DEFAULT 0, stock_ask_depth_volume UInt64 DEFAULT 0,
+ call_bid_depth_volume UInt64 DEFAULT 0, call_ask_depth_volume UInt64 DEFAULT 0,
+ put_bid_depth_volume UInt64 DEFAULT 0, put_ask_depth_volume UInt64 DEFAULT 0,
+ direct_take_capital_per_share Nullable(Float64), direct_take_capital_per_contract Nullable(Float64), direct_take_total_capital Nullable(Float64), direct_take_opening_fee Nullable(Float64),
+ direct_take_expiry_profit_per_share Nullable(Float64), direct_take_expiry_profit_per_contract Nullable(Float64), direct_take_total_expiry_profit Nullable(Float64),
+ direct_take_holding_return Nullable(Float64), direct_take_ytm Nullable(Float64), direct_take_ytm_spread_bps Nullable(Float64), direct_take_capacity UInt64 DEFAULT 0, direct_take_opportunity UInt8 DEFAULT 0,
  {', '.join(f'{s}_{f} Nullable(Float64)' for s in _STRATEGIES for f in _STRATEGY_FLOATS)},
  {', '.join(f'{s}_{f} Nullable(Float64)' for s in _STRATEGIES for f in _V3_STRATEGY_FLOATS)},
  {', '.join(f'{s}_opportunity Nullable(UInt8), {s}_capacity Nullable(UInt64), {s}_limiting_legs Array(LowCardinality(String))' for s in _STRATEGIES)},
+ {', '.join(f'{s}_quoteable UInt8 DEFAULT 0, {s}_queue_ahead_volume UInt64 DEFAULT 0' for s in _STRATEGIES)},
  quality_status LowCardinality(String), quality_reasons Array(String), warnings Array(String),
  calculated_at DateTime64(3), calculation_version LowCardinality(String)
 ) ENGINE = MergeTree PARTITION BY toYYYYMM(trade_date)

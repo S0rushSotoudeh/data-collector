@@ -71,6 +71,7 @@ async def create_parity_run(request: Request, config: ParityRunConfig):
             "start_date", "end_date", "interval_seconds", "max_quote_age_seconds",
             "minimum_ytm_spread_bps", "funding_source", "manual_borrowing_rate",
             "borrowing_spread", "stock_fee_category", "option_fee_category", "multiplier", "tick_size",
+            "target_package_count", "max_cross_leg_skew_seconds", "settlement_cost_per_contract",
         )},
         "start_time": config.start_time.isoformat(), "end_time": config.end_time.isoformat(),
         "expiry_cutoff": config.expiry_cutoff.isoformat(),

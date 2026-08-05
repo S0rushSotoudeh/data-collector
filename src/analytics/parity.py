@@ -11,8 +11,10 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 from typing import Literal
 
+from src.analytics.depth import DepthBook
+
 YEAR_SECONDS = 365.25 * 24 * 60 * 60
-CALCULATION_VERSION = "parity-v4"
+CALCULATION_VERSION = "parity-v5"
 
 
 @dataclass(frozen=True)
@@ -221,3 +223,127 @@ def validate_book(book: Book, leg: str) -> list[str]:
     if book.bid_volume <= 0 or book.ask_volume <= 0:
         reasons.append(f"{leg}_zero_volume")
     return reasons
+
+
+def calculate_v5(
+    *, call: DepthBook, put: DepthBook, stock: DepthBook, strike: float,
+    ttm_years: float, borrowing_rate: float, fees: Fees,
+    minimum_ytm_spread_bps: float, multiplier: int, target_packages: int,
+    settlement_cost_per_contract: float = 0, tick_size: float | None = None,
+) -> dict[str, object]:
+    """Depth-aware parity-v5 pricing with executable and quoteable signals."""
+    if multiplier <= 0 or target_packages <= 0 or strike <= 0:
+        raise ValueError("invalid parity-v5 sizing")
+    settlement_per_share = settlement_cost_per_contract / multiplier
+    terminal = strike - settlement_per_share
+    if terminal <= 0:
+        raise ValueError("settlement cost consumes the fixed payoff")
+    target_ytm = borrowing_rate + minimum_ytm_spread_bps / 10_000
+    target_capital = terminal * math.exp(-target_ytm * ttm_years)
+
+    def leg_cost(price: float, side: Literal["buy", "sell"], rate: float) -> tuple[float, float]:
+        charge = fee(price, rate)
+        return (price + charge if side == "buy" else -price + charge), charge
+
+    call_sell = call.vwap("sell", target_packages)
+    put_buy = put.vwap("buy", target_packages)
+    stock_buy = stock.vwap("buy", target_packages * multiplier)
+    direct_capacity = min(
+        call.total_volume("sell"), put.total_volume("buy"), stock.total_volume("buy") // multiplier,
+    )
+    direct_feasible = all(value is not None for value in (call_sell, put_buy, stock_buy))
+    direct_capital = None
+    direct_fee = None
+    direct_profit = None
+    direct_return = None
+    direct_ytm = None
+    direct_spread = None
+    if direct_feasible:
+        stock_cost, stock_fee = leg_cost(float(stock_buy), "buy", fees.stock_buy)
+        put_cost, put_fee = leg_cost(float(put_buy), "buy", fees.put_buy)
+        call_cost, call_fee = leg_cost(float(call_sell), "sell", fees.call_sell)
+        direct_capital = stock_cost + put_cost + call_cost
+        direct_fee = stock_fee + put_fee + call_fee
+        direct_profit = terminal - direct_capital
+        if direct_capital > 0 and ttm_years > 0:
+            direct_return = terminal / direct_capital - 1
+            direct_ytm = math.log(terminal / direct_capital) / ttm_years
+            direct_spread = (direct_ytm - borrowing_rate) * 10_000
+    result: dict[str, object] = {
+        "pv_borrowing": present_value(strike, borrowing_rate, ttm_years),
+        "target_ytm": target_ytm, "target_capital_per_share": target_capital,
+        "direct_take_capital_per_share": direct_capital,
+        "direct_take_capital_per_contract": direct_capital * multiplier if direct_capital is not None else None,
+        "direct_take_total_capital": direct_capital * multiplier * target_packages if direct_capital is not None else None,
+        "direct_take_opening_fee": direct_fee,
+        "direct_take_expiry_profit_per_share": direct_profit,
+        "direct_take_expiry_profit_per_contract": direct_profit * multiplier if direct_profit is not None else None,
+        "direct_take_total_expiry_profit": direct_profit * multiplier * target_packages if direct_profit is not None else None,
+        "direct_take_holding_return": direct_return, "direct_take_ytm": direct_ytm,
+        "direct_take_ytm_spread_bps": direct_spread, "direct_take_capacity": direct_capacity,
+        "direct_take_opportunity": int(bool(direct_feasible and direct_ytm is not None and direct_spread is not None and direct_spread >= minimum_ytm_spread_bps)),
+    }
+
+    strategies = {
+        "make_call_ask": ("call", "sell", call.price("buy"), [(put, "buy", fees.put_buy, target_packages), (stock, "buy", fees.stock_buy, target_packages * multiplier)], fees.call_sell),
+        "make_put_bid": ("put", "buy", put.price("sell"), [(call, "sell", fees.call_sell, target_packages), (stock, "buy", fees.stock_buy, target_packages * multiplier)], fees.put_buy),
+        "make_underlying_bid": ("underlying", "buy", stock.price("sell"), [(call, "sell", fees.call_sell, target_packages), (put, "buy", fees.put_buy, target_packages)], fees.stock_buy),
+    }
+    for name, (maker_leg, maker_side, current_price, takers, maker_fee_rate) in strategies.items():
+        hedge_cost = 0.0
+        hedge_fee = 0.0
+        capacities: list[int] = []
+        hedge_feasible = True
+        for book, side, rate, quantity in takers:
+            price = book.vwap(side, quantity)
+            capacities.append(book.total_volume(side) // (multiplier if book is stock else 1))
+            if price is None:
+                hedge_feasible = False
+                continue
+            cost, charge = leg_cost(price, side, rate)
+            hedge_cost += cost
+            hedge_fee += charge
+        capacity = min(capacities)
+        if maker_side == "buy":
+            boundary = (target_capital - hedge_cost) / (1 + maker_fee_rate)
+            rounded = round_to_tick(boundary, tick_size, "floor") if tick_size else boundary
+            maker_bid = call.price("sell") if maker_leg == "call" else put.price("sell") if maker_leg == "put" else stock.price("sell")
+            maker_ask = call.price("buy") if maker_leg == "call" else put.price("buy") if maker_leg == "put" else stock.price("buy")
+            suggested = min(rounded, maker_ask - tick_size) if tick_size and maker_ask is not None else rounded
+            quoteable = bool(hedge_feasible and maker_bid is not None and suggested >= maker_bid and suggested > 0)
+            headroom = rounded - maker_bid if maker_bid is not None else None
+        else:
+            boundary = (hedge_cost - target_capital) / (1 - maker_fee_rate)
+            rounded = round_to_tick(boundary, tick_size, "ceil") if tick_size else boundary
+            maker_bid, maker_ask = call.price("sell"), call.price("buy")
+            suggested = max(rounded, maker_bid + tick_size) if tick_size and maker_bid is not None else rounded
+            quoteable = bool(hedge_feasible and maker_ask is not None and suggested <= maker_ask and suggested > 0)
+            headroom = maker_ask - rounded if maker_ask is not None else None
+        capital = None
+        opening_fee = hedge_fee
+        if current_price is not None:
+            maker_cost, maker_charge = leg_cost(current_price, maker_side, maker_fee_rate)
+            capital = hedge_cost + maker_cost
+            opening_fee += maker_charge
+        expiry_profit = terminal - capital if capital is not None else None
+        holding_return = terminal / capital - 1 if capital is not None and capital > 0 else None
+        ytm = math.log(terminal / capital) / ttm_years if capital is not None and capital > 0 and ttm_years > 0 else None
+        spread = (ytm - borrowing_rate) * 10_000 if ytm is not None else None
+        maker_book = call if maker_leg == "call" else put if maker_leg == "put" else stock
+        result.update({
+            f"{name}_maker_price": current_price, f"{name}_opening_fee": opening_fee,
+            f"{name}_estimated_closing_fee": settlement_per_share,
+            f"{name}_capital_per_share": capital,
+            f"{name}_capital_per_contract": capital * multiplier if capital is not None else None,
+            f"{name}_total_capital": capital * multiplier * target_packages if capital is not None else None,
+            f"{name}_expiry_profit_per_share": expiry_profit,
+            f"{name}_expiry_profit_per_contract": expiry_profit * multiplier if expiry_profit is not None else None,
+            f"{name}_total_expiry_profit": expiry_profit * multiplier * target_packages if expiry_profit is not None else None,
+            f"{name}_holding_return": holding_return, f"{name}_ytm": ytm,
+            f"{name}_ytm_spread_bps": spread, f"{name}_opportunity": int(quoteable),
+            f"{name}_quoteable": int(quoteable), f"{name}_capacity": capacity,
+            f"{name}_limiting_legs": [], f"{name}_target_boundary": boundary,
+            f"{name}_suggested_maker_price": suggested, f"{name}_headroom": headroom,
+            f"{name}_queue_ahead_volume": maker_book.queue_volume(maker_side),
+        })
+    return result

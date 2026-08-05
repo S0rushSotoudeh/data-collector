@@ -240,6 +240,17 @@ def test_config_validation_and_effective_fee_override():
         stock_buy_fee=.123,
     )
     assert cfg.effective_fees().stock_buy == .123
+    assert ParityRunConfig(**{
+        "underlying_instrument_code": "s", "call_instrument_code": "c", "put_instrument_code": "p",
+        "start_date": date(2026, 1, 1), "end_date": date(2026, 1, 1), "multiplier": 100,
+        "max_cross_leg_skew_seconds": 1800,
+    }).max_cross_leg_skew_seconds == 1800
+    with pytest.raises(ValueError):
+        ParityRunConfig(
+            underlying_instrument_code="s", call_instrument_code="c", put_instrument_code="p",
+            start_date=date(2026, 1, 1), end_date=date(2026, 1, 1), multiplier=100,
+            max_cross_leg_skew_seconds=1801,
+        )
     with pytest.raises(ValueError):
         ParityRunConfig(
             underlying_instrument_code="s", call_instrument_code="c", put_instrument_code="p",

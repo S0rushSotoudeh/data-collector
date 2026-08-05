@@ -9,6 +9,7 @@ CHART_TEMPLATES = [
     "shared/echarts_support.html",
     "option/parity_analysis.html",
     "option/iv_surface.html",
+    "option/box_spread.html",
     "bonds/yield_curve_chart.html",
     "bonds/yield_spread_chart.html",
     "bonds/bond_trades_values.html",

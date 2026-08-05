@@ -1,5 +1,5 @@
 from datetime import date
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 from src.tasks import backfill_stock_order_books_task, backfill_stock_trades_task
 
@@ -15,6 +15,7 @@ def test_backfill_stock_order_books_task_forwards_parsed_dates() -> None:
     collector.assert_awaited_once_with(
         start_date=date(2025, 1, 2),
         end_date=date(2025, 1, 4),
+        progress=ANY,
     )
 
 
@@ -29,4 +30,5 @@ def test_backfill_stock_trades_task_forwards_parsed_dates() -> None:
     collector.assert_awaited_once_with(
         start_date=date(2025, 2, 10),
         end_date=date(2025, 2, 11),
+        progress=ANY,
     )
