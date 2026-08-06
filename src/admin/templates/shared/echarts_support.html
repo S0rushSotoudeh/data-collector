@@ -1,0 +1,85 @@
+ <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script>
+(function (window) {
+  "use strict";
+
+  if (window.AdminCharts) return;
+
+  var charts = [];
+
+  function resolveTarget(target) {
+    return typeof target === "string" ? document.getElementById(target) : target;
+  }
+
+  function init(target) {
+    var element = resolveTarget(target);
+    if (!element) throw new Error("Chart target not found: " + target);
+
+    var chart = echarts.getInstanceByDom(element);
+    if (!chart) chart = echarts.init(element);
+    if (charts.indexOf(chart) === -1) charts.push(chart);
+    return chart;
+  }
+
+  function showEmpty(chart, message) {
+    chart.clear();
+    chart.setOption({
+      title: {
+        text: message,
+        left: "center",
+        top: "center",
+        textStyle: { color: "#94a3b8", fontWeight: "normal", fontSize: 14 }
+      }
+    });
+  }
+
+  function grid(overrides) {
+    return Object.assign(
+      { left: 70, right: 64, top: 40, bottom: 70 },
+      overrides || {}
+    );
+  }
+
+  function dualAxisZoom(options) {
+    var settings = options || {};
+    var xAxisIndex = settings.xAxisIndex == null ? 0 : settings.xAxisIndex;
+    var yAxisIndex = settings.yAxisIndex == null ? 0 : settings.yAxisIndex;
+    var left = settings.left == null ? 70 : settings.left;
+    var right = settings.right == null ? 64 : settings.right;
+    var top = settings.top == null ? 40 : settings.top;
+    var bottom = settings.bottom == null ? 70 : settings.bottom;
+
+    return [
+      {
+        type: "slider", xAxisIndex: xAxisIndex, filterMode: "none",
+        height: 18, bottom: 16, left: left, right: right
+      },
+      {
+        type: "inside", xAxisIndex: xAxisIndex, filterMode: "none",
+        zoomOnMouseWheel: true, moveOnMouseWheel: false
+      },
+      {
+        type: "slider", yAxisIndex: yAxisIndex, filterMode: "none",
+        orient: "vertical", width: 18, right: 16, top: top, bottom: bottom
+      },
+      {
+        type: "inside", yAxisIndex: yAxisIndex, filterMode: "none",
+        zoomOnMouseWheel: "shift", moveOnMouseWheel: false
+      }
+    ];
+  }
+
+  window.addEventListener("resize", function () {
+    charts.forEach(function (chart) {
+      if (!chart.isDisposed()) chart.resize();
+    });
+  });
+
+  window.AdminCharts = {
+    init: init,
+    showEmpty: showEmpty,
+    grid: grid,
+    dualAxisZoom: dualAxisZoom
+  };
+})(window);
+</script>

@@ -1,8 +1,12 @@
+from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.collectors.option.market_watch_client import OptionTsetmcClient
+from src.collectors.option.market_watch_client import (
+    OptionTsetmcClient,
+    OptionTsetmcError,
+)
 
 
 _SAMPLE_MARKET_WATCH = (
@@ -68,3 +72,52 @@ class TestGetMarketWatch:
             items = await client.get_market_watch()
         assert len(items) == 1
         assert items[0].ins_code == "1"
+
+
+class TestGetBestLimits:
+    async def test_parses_tsetmc_200_response_shape(self) -> None:
+        payload = {
+            "bestLimitsHistory": [
+                {
+                    "idn": 0,
+                    "dEven": 0,
+                    "hEven": 60127,
+                    "refID": 15364957361,
+                    "number": 4,
+                    "qTitMeDem": 500,
+                    "zOrdMeDem": 1,
+                    "pMeDem": 9.0,
+                    "pMeOf": 0.0,
+                    "zOrdMeOf": 0,
+                    "qTitMeOf": 0,
+                    "title": None,
+                    "insCode": None,
+                }
+            ]
+        }
+        client = OptionTsetmcClient(request_delay=0)
+        client._request_json = AsyncMock(return_value=payload)  # type: ignore[method-assign]
+
+        limits = await client.get_best_limits("11792961634816338", date(2026, 7, 29))
+
+        assert len(limits) == 1
+        assert limits[0].ref_id == 15364957361
+        assert limits[0].depth_level == 4
+        assert limits[0].bid_volume == 500
+
+    async def test_valid_200_empty_history_is_explicitly_empty(self) -> None:
+        client = OptionTsetmcClient(request_delay=0)
+        client._request_json = AsyncMock(  # type: ignore[method-assign]
+            return_value={"bestLimitsHistory": []}
+        )
+
+        limits = await client.get_best_limits("code", date(2026, 7, 30))
+
+        assert limits == []
+
+    async def test_unexpected_200_shape_is_an_error(self) -> None:
+        client = OptionTsetmcClient(request_delay=0)
+        client._request_json = AsyncMock(return_value={})  # type: ignore[method-assign]
+
+        with pytest.raises(OptionTsetmcError, match="Unexpected BestLimits response"):
+            await client.get_best_limits("code", date(2026, 7, 30))

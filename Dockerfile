@@ -37,3 +37,24 @@ USER appuser
 EXPOSE 8000
 
 ENTRYPOINT ["/app/entrypoint.sh"]
+
+
+FROM python:3.13-slim AS graphify
+
+ARG GRAPHIFY_VERSION=0.9.18
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    GRAPHIFY_QUERY_LOG_DISABLE=1 \
+    HOME=/tmp/graphify-home
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir "graphifyy[mcp]==${GRAPHIFY_VERSION}" \
+    && mkdir -p /tmp/graphify-home \
+    && chmod 1777 /tmp/graphify-home
+
+WORKDIR /workspace
+
+ENTRYPOINT ["graphify"]

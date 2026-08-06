@@ -1,3 +1,4 @@
+import logging
 import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -11,8 +12,14 @@ from src.collectors.option.models import (
 )
 from src.db.clickhouse import price_to_storage
 
-_OPTION_NAME_RE = re.compile(r"^(اختیار([خف]))\s+(\S+?)-(\d+)-(\d{4}/\d{2}/\d{2})$")
+logger = logging.getLogger(__name__)
+
+_OPTION_NAME_RE = re.compile(r"^(اختیار([خف]))\s+(.+?)-(\d+)-(\S+)$")
 _TYPE_MAP = {"خ": "call", "ف": "put"}
+
+_DATE_SLASH_RE = re.compile(r"^(\d{1,4})[-/](\d{1,2})[-/](\d{1,2})$")
+_DATE_8DIGIT_RE = re.compile(r"^\d{8}$")
+_DATE_6DIGIT_RE = re.compile(r"^\d{6}$")
 
 
 def _normalize(name: str | None) -> str:
@@ -25,6 +32,54 @@ def is_option(item: MarketWatchItem) -> bool:
     return "اختیار" in _normalize(item.name)
 
 
+def resolve_underlying_instrument_codes(
+    market_watch: list[MarketWatchItem],
+) -> dict[str, str]:
+    """Map option ins_code to its underlying ins_code from one market snapshot.
+
+    TSETMC does not expose the relationship in GetInstrumentInfo. Prefer an
+    exact normalized symbol match and use the shared four-character issuer
+    token in instrument_id only when it identifies a single primary (0001)
+    instrument.
+    """
+    non_options = [item for item in market_watch if not is_option(item)]
+    by_symbol: dict[str, list[MarketWatchItem]] = {}
+    by_issuer: dict[str, list[MarketWatchItem]] = {}
+
+    for item in non_options:
+        symbol = _normalize(item.symbol).strip()
+        if symbol:
+            by_symbol.setdefault(symbol, []).append(item)
+        issuer = _issuer_token(item.instrument_id)
+        if issuer and item.instrument_id.endswith("0001"):
+            by_issuer.setdefault(issuer, []).append(item)
+
+    resolved: dict[str, str] = {}
+    for item in market_watch:
+        if not is_option(item):
+            continue
+        _, underlying_symbol, _, _ = parse_option_name(item.name)
+        if not underlying_symbol:
+            continue
+
+        symbol_matches = by_symbol.get(_normalize(underlying_symbol).strip(), [])
+        if len(symbol_matches) == 1:
+            resolved[item.ins_code] = symbol_matches[0].ins_code
+            continue
+
+        issuer_matches = by_issuer.get(_issuer_token(item.instrument_id) or "", [])
+        if len(issuer_matches) == 1:
+            resolved[item.ins_code] = issuer_matches[0].ins_code
+
+    return resolved
+
+
+def _issuer_token(instrument_id: str | None) -> str | None:
+    if not instrument_id or len(instrument_id) < 8:
+        return None
+    return instrument_id[4:8]
+
+
 def parse_option_name(
     name: str | None,
 ) -> tuple[str | None, str | None, Decimal | None, date | None]:
@@ -33,6 +88,7 @@ def parse_option_name(
     normalized = _normalize(name)
     m = _OPTION_NAME_RE.match(normalized)
     if not m:
+        logger.warning("Option name did not match expected pattern: %r", name)
         return None, None, None, None
     type_char = m.group(2)
     underlying = m.group(3)
@@ -43,8 +99,34 @@ def parse_option_name(
         strike = Decimal(strike_str)
     except Exception:
         strike = None
-    expiry = _jalali_to_date(expiry_str)
+    expiry = _parse_expiry_date(expiry_str)
+    if expiry is None:
+        logger.warning(
+            "Option name expiry unparseable: %r (date blob=%r)", name, expiry_str
+        )
     return opt_type, underlying, strike, expiry
+
+
+def _parse_expiry_date(blob: str) -> date | None:
+    s = blob.strip()
+    if _DATE_8DIGIT_RE.match(s):
+        return _jalali_to_date(f"{s[:4]}/{s[4:6]}/{s[6:8]}")
+    if _DATE_6DIGIT_RE.match(s):
+        yy = _expand_jalali_century(int(s[:2]))
+        return _jalali_to_date(f"{yy}/{s[2:4]}/{s[4:6]}")
+    m = _DATE_SLASH_RE.match(s)
+    if m:
+        y = int(m.group(1))
+        if y < 100:
+            y = _expand_jalali_century(y)
+        return _jalali_to_date(f"{y}/{m.group(2)}/{m.group(3)}")
+    return None
+
+
+def _expand_jalali_century(yy: int) -> int:
+    # Iranian option contracts launched ~1394 Jalali; map a 2-digit year
+    # into the 1394..1493 window so 94..99 -> 1394..1399 and 00..93 -> 1400..1493.
+    return 1400 + yy if yy < 94 else 1300 + yy
 
 
 def _jalali_to_date(jalali_str: str) -> date | None:

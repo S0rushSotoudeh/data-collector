@@ -1,0 +1,206 @@
+{% extends "shared/admin_base.html" %}
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body">
+    {% if messages %}
+      {% for msg in messages %}
+        <div class="alert alert-{{ msg.type }}">{{ msg.text | safe }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="alert alert-info">Tasks run asynchronously and are tracked in their Collection Runs or Yield-Curve Runs page.</div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Sync Bond Instruments</h3></div>
+  <div class="card-body">
+    <p>Fetch bond instrument metadata from TSETMC and upsert into PostgreSQL.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="sync-bond-instruments">
+      <button type="submit" class="btn btn-primary">Sync Bond Instruments</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Sync Option Instruments</h3></div>
+  <div class="card-body">
+    <p>Fetch option instrument metadata from TSETMC MarketWatchInit and upsert into PostgreSQL.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="sync-option-instruments">
+      <button type="submit" class="btn btn-primary">Sync Option Instruments</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Sync Stock Instruments</h3></div>
+  <div class="card-body">
+    <p>Fetch stock instrument metadata from TSETMC and upsert into PostgreSQL.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="sync-stock-instruments">
+      <button type="submit" class="btn btn-primary">Sync Stock Instruments</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Bond Order Books</h3></div>
+  <div class="card-body">
+    <p>Fetch historical bond order book snapshots from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-bond-order-books">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Bond Order Books</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Stock Order Books</h3></div>
+  <div class="card-body">
+    <p>Fetch historical stock order book snapshots from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-stock-order-books">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Stock Order Books</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Option Order Books</h3></div>
+  <div class="card-body">
+    <p>Fetch historical option order book snapshots from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-option-order-books">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Option Order Books</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Bond Trades</h3></div>
+  <div class="card-body">
+    <p>Fetch historical bond trade history from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-bond-trades">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Bond Trades</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Stock Trades</h3></div>
+  <div class="card-body">
+    <p>Fetch historical stock trade history from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-stock-trades">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Stock Trades</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Option Trades</h3></div>
+  <div class="card-body">
+    <p>Fetch historical option trade history from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-option-trades">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Option Trades</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Compute Yield Curve Snapshot</h3></div>
+  <div class="card-body">
+    <p>Compute yield curves for today (uses latest bond order book data). Runs automatically every 60s during market hours.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="compute-yield-curve">
+      <button type="submit" class="btn btn-success">Compute Yield Curve Snapshot</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Yield Curves</h3></div>
+  <div class="card-body">
+    <p>Backfill yield curves for all dates in the given range (reads from existing bond order book data in ClickHouse).</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-yield-curves">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Yield Curves</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,6 +1,15 @@
 import os
 from celery import Celery
+from celery.signals import before_task_publish, task_failure, task_postrun, task_prerun
 from celery.schedules import crontab
+
+from src.services.operation_runs import (
+    TASK_SPECS,
+    create_for_task_message,
+    fail_run,
+    finish_run,
+    update_run,
+)
 
 _redis_url = f"redis://{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}/0"
 
@@ -25,17 +34,67 @@ celery.conf.update(
 beat_hour = int(os.getenv("BEAT_FETCH_HOUR", "1"))
 
 celery.conf.beat_schedule = {
-    "fetch-yesterday-orderbook": {
-        "task": "src.tasks.fetch_yesterday_orderbook",
+    "fetch-yesterday-bond-order-book": {
+        "task": "src.tasks.fetch_yesterday_bond_order_book",
         "schedule": crontab(hour=beat_hour, minute=0),
     },
-    "fetch-yesterday-trades": {
-        "task": "src.tasks.fetch_yesterday_trades",
+    "fetch-yesterday-bond-trades": {
+        "task": "src.tasks.fetch_yesterday_bond_trades",
         "schedule": crontab(hour=beat_hour, minute=5),
-    }
+    },
+    "sync-option-instruments": {"task": "src.tasks.sync_option_instruments", "schedule": crontab(hour=beat_hour, minute=10)},
+    "sync-stock-instruments": {"task": "src.tasks.sync_stock_instruments", "schedule": crontab(hour=beat_hour, minute=15)},
+    "fetch-yesterday-option-order-book": {"task": "src.tasks.fetch_yesterday_option_orderbook", "schedule": crontab(hour=beat_hour, minute=20)},
+    "fetch-yesterday-option-trades": {"task": "src.tasks.fetch_yesterday_option_trades", "schedule": crontab(hour=beat_hour, minute=25)},
+    "fetch-yesterday-stock-order-book": {"task": "src.tasks.fetch_yesterday_stock_orderbook", "schedule": crontab(hour=beat_hour, minute=30)},
+    "fetch-yesterday-stock-trades": {"task": "src.tasks.fetch_yesterday_stock_trades", "schedule": crontab(hour=beat_hour, minute=35)},
+    "compute-yesterday-option-market-potential": {"task": "src.tasks.compute_option_market_potential_daily", "schedule": crontab(hour=beat_hour, minute=45)},
 }
 
 celery.autodiscover_tasks(["src.tasks"])
+
+
+def _operation_run_id(task) -> str | None:
+    headers = getattr(task.request, "headers", None) or {}
+    value = headers.get("operation_run_id")
+    return str(value) if value else None
+
+
+@before_task_publish.connect
+def create_scheduled_operation_run(sender=None, body=None, headers=None, **_kwargs):
+    """Create queued lifecycle rows for Celery Beat and other direct publishers."""
+    if sender not in TASK_SPECS or headers is None or headers.get("operation_run_id"):
+        return
+    args = body[0] if isinstance(body, (tuple, list)) and len(body) > 0 else []
+    kwargs = body[1] if isinstance(body, (tuple, list)) and len(body) > 1 else {}
+    row = create_for_task_message(str(sender), str(headers.get("id")), args or [], kwargs or {})
+    if row is not None:
+        headers["operation_run_id"] = str(row.run_id)
+        headers["operation_trigger"] = "scheduled"
+
+
+@task_prerun.connect
+def start_operation_run(sender=None, task=None, **_kwargs):
+    current_task = task or sender
+    run_id = _operation_run_id(current_task) if current_task is not None else None
+    if run_id:
+        update_run(run_id, status="running", celery_task_id=current_task.request.id, error="")
+
+
+@task_postrun.connect
+def complete_operation_run(sender=None, task=None, retval=None, state=None, **_kwargs):
+    current_task = task or sender
+    run_id = _operation_run_id(current_task) if current_task is not None else None
+    if run_id and state == "SUCCESS":
+        finish_run(run_id, retval)
+
+
+@task_failure.connect
+def fail_operation_run(sender=None, task=None, exception=None, **_kwargs):
+    current_task = task or sender
+    run_id = _operation_run_id(current_task) if current_task is not None else None
+    if run_id:
+        fail_run(run_id, exception)
 
 # Ensure task modules are imported so @shared_task decorators register
 import src.tasks  # noqa: F401

@@ -1,4 +1,18 @@
 services:
+  graphify:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: graphify
+    user: "${UID:-1000}:${GID:-1000}"
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    environment:
+      GRAPHIFY_QUERY_LOG_DISABLE: "1"
+      HOME: /tmp/graphify-home
+
   api:
     build:
       context: .
@@ -28,7 +42,6 @@ services:
       context: .
       dockerfile: Dockerfile
       target: development
-    container_name: dc-celery-worker
     user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./src:/app/src
@@ -43,7 +56,7 @@ services:
       clickhouse:
         condition: service_healthy
     entrypoint: ["/app/entrypoint-celery.sh"]
-    command: ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--concurrency=1"]
+    command: ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
     restart: unless-stopped
 
   celery-beat:
@@ -134,6 +147,7 @@ services:
     depends_on:
       redis:
         condition: service_started
+    entrypoint: ["/app/entrypoint-celery.sh"]
     command:
       [
         "celery",
@@ -151,6 +165,8 @@ services:
     container_name: dc-dbgate
     ports:
       - "3090:3000"
+    volumes:
+      - dbgate_data:/root/.local/share/dbgate
     depends_on:
       redis:
         condition: service_started
@@ -160,7 +176,8 @@ services:
         condition: service_healthy
 
     restart: unless-stopped
-    
+
 volumes:
   postgres_data2:
   clickhouse_data:
+  dbgate_data:

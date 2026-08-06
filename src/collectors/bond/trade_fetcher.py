@@ -7,6 +7,7 @@ from src.collectors.bond.tsetmc_client import TsetmcClient
 from src.collectors.bond.transformer import trades_to_trade_rows
 from src.db.clickhouse.bond import insert_trades
 from src.db.clickhouse.schema import TRADES_TABLE
+from src.services.operation_runs import RunProgressReporter
 
 
 def _has_existing_trades(instrument_code: str, trade_date: date) -> bool:
@@ -35,6 +36,7 @@ async def backfill_trades(
     end_date: date,
     instrument_codes: list[str] | None = None,
     concurrency: int = 5,
+    progress: RunProgressReporter | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     total_rows = 0
@@ -43,19 +45,29 @@ async def backfill_trades(
 
     async with TsetmcClient(concurrency=concurrency) as client:
         codes = instrument_codes or await get_active_instrument_codes()
+        if progress:
+            progress.set_total(len(codes) * ((end_date - start_date).days + 1))
 
         current = start_date
         while current <= end_date:
             for code in codes:
                 if await asyncio.to_thread(_has_existing_trades, code, current):
                     skipped += 1
+                    if progress:
+                        progress.advance()
                     continue
+                rows = 0
+                warning_count = 0
                 try:
                     rows = await fetch_trades_for_date(client, code, current)
                     total_rows += rows
                     total_days_tried += 1
                 except Exception as e:
                     errors.append(f"{code}@{current.isoformat()}: {e}")
+                    warning_count = 1
+                finally:
+                    if progress:
+                        progress.advance(output_count=rows, warning_count=warning_count)
             current += timedelta(days=1)
 
     return {

@@ -6,13 +6,19 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from src.celery_app import celery
+from src.services.operation_runs import enqueue_task, get_run_by_task_id, run_to_dict
 from src.tasks import (
+    backfill_bond_order_books_task,
+    backfill_bond_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
-    backfill_order_books_task,
-    backfill_trades_task,
+    backfill_stock_order_books_task,
+    backfill_stock_trades_task,
+    backfill_yield_curves,
+    compute_yield_curve_snapshot,
     sync_bond_instruments,
     sync_option_instruments,
+    sync_stock_instruments,
 )
 
 router = APIRouter(prefix="/admin/tasks", tags=["admin-tasks"])
@@ -30,6 +36,8 @@ async def _require_admin(request: Request) -> None:
 class TaskSubmittedResponse(BaseModel):
     task_id: str
     status: str
+    run_id: str
+    collection_run_id: str | None = None
 
 
 class TaskStatusResponse(BaseModel):
@@ -43,64 +51,113 @@ class BackfillRequest(BaseModel):
     start_date: date = Field(..., description="Start date (YYYY-MM-DD)")
     end_date: date = Field(..., description="End date (YYYY-MM-DD)")
 
+    def model_post_init(self, __context) -> None:
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must not be after end_date")
+        if (self.end_date - self.start_date).days > 731:
+            raise ValueError("backfill is limited to 24 months")
 
-@router.post("/sync-instruments", response_model=TaskSubmittedResponse)
-async def api_sync_instruments(request: Request):
-    await _require_admin(request)
-    task = sync_bond_instruments.delay()
-    return TaskSubmittedResponse(task_id=task.id, status=task.status)
 
-
-@router.post("/backfill-order-books", response_model=TaskSubmittedResponse)
-async def api_backfill_order_books(request: Request, body: BackfillRequest):
-    await _require_admin(request)
-    task = backfill_order_books_task.delay(
-        start_date_str=body.start_date.isoformat(),
-        end_date_str=body.end_date.isoformat(),
+def _submitted(task, request: Request, *, body: BackfillRequest | None = None) -> TaskSubmittedResponse:
+    kwargs = {}
+    if body is not None:
+        kwargs = {
+            "start_date_str": body.start_date.isoformat(),
+            "end_date_str": body.end_date.isoformat(),
+        }
+    row, async_result = enqueue_task(
+        task,
+        kwargs=kwargs,
+        trigger="manual",
+        created_by=request.session.get("user") or "admin",
     )
-    return TaskSubmittedResponse(task_id=task.id, status=task.status)
-
-
-@router.post("/backfill-trades", response_model=TaskSubmittedResponse)
-async def api_backfill_trades(request: Request, body: BackfillRequest):
-    await _require_admin(request)
-    task = backfill_trades_task.delay(
-        start_date_str=body.start_date.isoformat(),
-        end_date_str=body.end_date.isoformat(),
+    identifier = str(row.run_id)
+    return TaskSubmittedResponse(
+        task_id=async_result.id,
+        status="queued",
+        run_id=identifier,
+        collection_run_id=identifier if row.family == "collection" else None,
     )
-    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+
+
+@router.post("/sync-bond-instruments", response_model=TaskSubmittedResponse)
+async def api_sync_bond_instruments(request: Request):
+    await _require_admin(request)
+    return _submitted(sync_bond_instruments, request)
+
+
+@router.post("/backfill-bond-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_bond_order_books(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_bond_order_books_task, request, body=body)
+
+
+@router.post("/backfill-bond-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_bond_trades(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_bond_trades_task, request, body=body)
 
 
 @router.post("/sync-option-instruments", response_model=TaskSubmittedResponse)
 async def api_sync_option_instruments(request: Request):
     await _require_admin(request)
-    task = sync_option_instruments.delay()
-    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+    return _submitted(sync_option_instruments, request)
+
+
+@router.post("/sync-stock-instruments", response_model=TaskSubmittedResponse)
+async def api_sync_stock_instruments(request: Request):
+    await _require_admin(request)
+    return _submitted(sync_stock_instruments, request)
+
+
+@router.post("/backfill-stock-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_stock_order_books(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_stock_order_books_task, request, body=body)
+
+
+@router.post("/backfill-stock-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_stock_trades(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_stock_trades_task, request, body=body)
 
 
 @router.post("/backfill-option-order-books", response_model=TaskSubmittedResponse)
 async def api_backfill_option_order_books(request: Request, body: BackfillRequest):
     await _require_admin(request)
-    task = backfill_option_order_books_task.delay(
-        start_date_str=body.start_date.isoformat(),
-        end_date_str=body.end_date.isoformat(),
-    )
-    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+    return _submitted(backfill_option_order_books_task, request, body=body)
 
 
 @router.post("/backfill-option-trades", response_model=TaskSubmittedResponse)
 async def api_backfill_option_trades(request: Request, body: BackfillRequest):
     await _require_admin(request)
-    task = backfill_option_trades_task.delay(
-        start_date_str=body.start_date.isoformat(),
-        end_date_str=body.end_date.isoformat(),
-    )
-    return TaskSubmittedResponse(task_id=task.id, status=task.status)
+    return _submitted(backfill_option_trades_task, request, body=body)
+
+
+@router.post("/compute-yield-curve-snapshot", response_model=TaskSubmittedResponse)
+async def api_compute_yield_curve_snapshot(request: Request):
+    await _require_admin(request)
+    return _submitted(compute_yield_curve_snapshot, request)
+
+
+@router.post("/backfill-yield-curves", response_model=TaskSubmittedResponse)
+async def api_backfill_yield_curves(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_yield_curves, request, body=body)
 
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)
 async def api_task_status(request: Request, task_id: str):
     await _require_admin(request)
+    operation = get_run_by_task_id(task_id)
+    if operation is not None:
+        data = run_to_dict(operation)
+        return TaskStatusResponse(
+            task_id=task_id,
+            status=operation.status,
+            result=data.get("result") or None,
+            error=operation.error,
+        )
     async_result: AsyncResult = AsyncResult(task_id, app=celery)
     resp = TaskStatusResponse(task_id=task_id, status=async_result.status)
     if async_result.successful():

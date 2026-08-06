@@ -139,7 +139,17 @@ class OptionTsetmcClient:
         data = await self._request_json(f"/BestLimits/{ins_code}/{date_str}")
         if data is None:
             return []
-        raw_list = data.get("bestLimitsHistory") or []
+        if not isinstance(data, dict) or "bestLimitsHistory" not in data:
+            raise OptionTsetmcError(
+                f"Unexpected BestLimits response for {ins_code}@{date_str}"
+            )
+        raw_list = data["bestLimitsHistory"]
+        if raw_list is None:
+            return []
+        if not isinstance(raw_list, list):
+            raise OptionTsetmcError(
+                f"Invalid bestLimitsHistory for {ins_code}@{date_str}"
+            )
         return [BestLimitEntry.from_dict(item) for item in raw_list]
 
     async def get_trade_history(

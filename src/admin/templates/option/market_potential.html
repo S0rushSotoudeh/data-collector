@@ -1,0 +1,22 @@
+{% extends "shared/admin_base.html" %}
+{% block custom_styles %}<style>
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:12px}.kpi{padding:16px;border-radius:10px;background:var(--tblr-bg-surface);border:1px solid var(--tblr-border-color)}.kpi b{display:block;font-size:1.4rem}.chart{height:360px}.state{border-left:4px solid #f59f00;padding:10px;background:#fff8db}@media(max-width:900px){.kpis{grid-template-columns:1fr 1fr}}
+</style>{% endblock %}
+{% block content %}
+<div class="d-flex gap-2 mb-3"><input id="start" type="date" class="form-control"><input id="end" type="date" class="form-control"><button id="refresh" class="btn btn-primary">Refresh</button><a class="btn btn-outline-secondary" href="/api/v1/options/market-potential/export.csv">Export CSV</a></div>
+<div id="coverage-state" class="state mb-3">Auditing raw ClickHouse coverage…</div>
+<div class="kpis mb-3"><div class="kpi">Contracts<b id="contracts">—</b></div><div class="kpi">Underlyings<b id="underlyings">—</b></div><div class="kpi">Trades<b id="trades">—</b></div><div class="kpi">Traded value<b id="value">—</b></div><div class="kpi">Two-sided ratio<b id="twosided">—</b></div></div>
+<div class="card mb-3"><div class="card-header">Activity and liquidity through time</div><div id="timeseries" class="chart"></div></div>
+<div class="card mb-3"><div class="card-header">Pilot-ready call/put packages</div><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Date</th><th>Underlying</th><th>Call</th><th>Put</th><th>Strike</th><th>Expiry</th><th>Activity</th><th>Quotes</th><th>Eligible</th><th>Quality</th></tr></thead><tbody id="pairs"></tbody></table></div></div>
+<div class="card"><div class="card-header">Contract concentration</div><div class="table-responsive"><table class="table table-sm"><thead><tr><th>Contract</th><th>Underlying</th><th>Trades</th><th>Value</th><th>VWAP</th><th>Spread p50</th><th>Two-sided</th><th>Quality</th></tr></thead><tbody id="contract-rows"></tbody></table></div></div>
+{% endblock %}
+{% block custom_js %}{% include "shared/echarts_support.html" %}<script>
+const $=id=>document.getElementById(id),fmt=v=>v===null||v===undefined?'—':Number(v).toLocaleString(undefined,{maximumFractionDigits:2});const chart=AdminCharts.init('timeseries');
+const qs=()=>{const p=new URLSearchParams();if($('start').value)p.set('start_date',$('start').value);if($('end').value)p.set('end_date',$('end').value);return p.toString()};
+async function load(){const q=qs();const [s,c,t,p]=await Promise.all([fetch('/api/v1/options/market-potential/summary?'+q).then(r=>r.json()),fetch('/api/v1/options/market-potential/coverage').then(r=>r.json()),fetch('/api/v1/options/market-potential/timeseries?limit=5000&'+q).then(r=>r.json()),fetch('/api/v1/options/market-potential/pairs?limit=1000&'+q).then(r=>r.json())]);
+['contracts','underlyings','trades'].forEach(k=>$(k).textContent=fmt(s[k]));$('value').textContent=fmt(s.traded_value);$('twosided').textContent=s.two_sided_ratio===null?'—':fmt(s.two_sided_ratio*100)+'%';$('coverage-state').textContent=Object.entries(c).map(([k,v])=>`${k}: ${v.start_date||'no data'} → ${v.end_date||'no data'} (${fmt(v.row_count)} rows)`).join(' · ');
+const rows=t.items||[];chart.setOption({grid:AdminCharts.grid(),tooltip:{trigger:'axis'},legend:{},xAxis:{type:'time'},yAxis:[{type:'value'},{type:'value'}],dataZoom:AdminCharts.dualAxisZoom(),series:[{name:'Trades',type:'bar',data:rows.map(x=>[x.trade_date,x.trade_count])},{name:'Traded value',type:'line',yAxisIndex:1,showSymbol:false,data:rows.map(x=>[x.trade_date,x.traded_value])}]},true);
+$('contract-rows').innerHTML=rows.slice(0,500).map(x=>`<tr><td>${x.instrument_code}</td><td>${x.underlying_instrument_code}</td><td>${fmt(x.trade_count)}</td><td>${fmt(x.traded_value)}</td><td>${fmt(x.vwap)}</td><td>${fmt(x.spread_p50)}</td><td>${fmt(x.two_sided_ratio*100)}%</td><td>${(x.quality_flags||[]).join(', ')}</td></tr>`).join('');
+$('pairs').innerHTML=(p.items||[]).map(x=>`<tr><td>${x.trade_date}</td><td>${x.underlying_instrument_code}</td><td>${x.call_instrument_code}</td><td>${x.put_instrument_code}</td><td>${fmt(x.strike)}</td><td>${x.expiry_date}</td><td>${fmt(x.activity_score)}</td><td>${fmt(x.quote_availability*100)}%</td><td>${x.pilot_eligible?'✓':'—'}</td><td>${(x.quality_flags||[]).join(', ')}</td></tr>`).join('')}
+$('refresh').onclick=load;load();
+</script>{% endblock %}

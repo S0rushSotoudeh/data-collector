@@ -1,0 +1,389 @@
+{% extends "shared/admin_base.html" %}
+{% block custom_styles %}
+<style>
+  .filter-card { margin-bottom: 1.5rem; }
+  .filter-card .card-body { padding: 1rem 1.5rem; }
+  .chart-card { height: 560px; }
+  .chart-card .card-body { padding: 0; }
+  #yc-chart { width: 100%; height: 560px; }
+  .kpi-card .card-body { padding: .75rem 1rem; }
+  .kpi-badge {
+    display: inline-block; font-size: .75rem; font-weight: 600;
+    padding: .15rem .5rem; border-radius: .375rem; margin-right: .4rem;
+    background: var(--tblr-bg-surface-secondary, #f1f5f9); color: var(--tblr-muted, #64748b);
+  }
+  .kpi-badge.ok { background: #d1fae5; color: #047857; }
+  .kpi-badge.bad { background: #fee2e2; color: #b91c1c; }
+  .empty-state {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: var(--tblr-muted, #64748b); font-size: .95rem;
+  }
+  .kpi-title { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--tblr-muted); }
+  .side-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .35rem; vertical-align: middle; }
+  .side-bid { background: #2563eb; }
+  .side-ask { background: #dc2626; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="card filter-card">
+  <div class="card-header"><h3 class="card-title">Snapshot Filter</h3></div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label class="form-label">Trade Date</label>
+        <input type="date" id="yc-date" class="form-control" name="date">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Trade Time</label>
+        <select id="yc-time" class="form-select" name="time" disabled>
+          <option value="">— pick a date first —</option>
+        </select>
+      </div>
+      <div class="col-md-6 text-muted small align-self-center" id="yc-status">
+        Select a date to load available snapshots.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card kpi-card">
+      <div class="card-body">
+        <div class="kpi-title"><span class="side-dot side-bid"></span>Bid Fit</div>
+        <div id="kpi-bid" class="mt-2 text-muted small">—</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card kpi-card">
+      <div class="card-body">
+        <div class="kpi-title"><span class="side-dot side-ask"></span>Ask Fit</div>
+        <div id="kpi-ask" class="mt-2 text-muted small">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card chart-card">
+  <div class="card-header"><h3 class="card-title">Term Structure</h3></div>
+  <div class="card-body">
+    <div id="yc-chart"></div>
+  </div>
+</div>
+
+{% endblock %}
+{% block custom_js %}
+{% include "shared/echarts_support.html" %}
+<script>
+(function () {
+  "use strict";
+
+  var state = {
+    date: null,
+    fitsCache: {},          // key: time|side -> fit row
+    times: [],              // sorted desc HHMMSS ints
+    chart: null
+  };
+
+  var COLORS = { bid: "#2563eb", ask: "#dc2626" };
+  var dateInput = document.getElementById("yc-date");
+  var timeSelect = document.getElementById("yc-time");
+  var statusEl = document.getElementById("yc-status");
+  var kpiBidEl = document.getElementById("kpi-bid");
+  var kpiAskEl = document.getElementById("kpi-ask");
+  var chartEl = document.getElementById("yc-chart");
+
+  function ensureChart() {
+    if (!state.chart) {
+      state.chart = AdminCharts.init(chartEl);
+    }
+    return state.chart;
+  }
+
+  function setStatus(msg, isErr) {
+    statusEl.textContent = msg;
+    statusEl.classList.toggle("text-danger", !!isErr);
+  }
+
+  function showEmpty(msg) {
+    AdminCharts.showEmpty(ensureChart(), msg);
+  }
+
+  function fmtPct(v) {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return (v * 100).toFixed(3) + "%";
+  }
+  function fmtNum(v, d) {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return Number(v).toFixed(d == null ? 4 : d);
+  }
+  function fmtInt(v) {
+    if (v === null || v === undefined || isNaN(v)) return "—";
+    return String(v);
+  }
+
+  function renderKpi(el, fit) {
+    if (!fit) {
+      el.className = "mt-2 text-muted small";
+      el.innerHTML = "No fit row for this side.";
+      return;
+    }
+    var conv = fit.converged === 1 || fit.converged === "1" || fit.converged === true;
+    var convClass = conv ? "ok" : "bad";
+    var convText = conv ? "converged" : "not converged";
+    var lam = fit.lambda;
+    el.className = "mt-2 small";
+    el.innerHTML =
+      '<span class="kpi-badge ' + convClass + '">' + convText + '</span>' +
+      '<span class="kpi-badge">n=' + fmtInt(fit.n_bonds) + '/' + fmtInt(fit.n_bonds_total) + '</span>' +
+      '<span class="kpi-badge">rmse=' + fmtNum(fit.rmse, 6) + '</span>' +
+      '<span class="kpi-badge">λ=' + fmtNum(lam, 3) + '</span>' +
+      '<span class="kpi-badge">β0=' + fmtNum(fit.beta0, 4) + '</span>' +
+      '<span class="kpi-badge">β1=' + fmtNum(fit.beta1, 4) + '</span>' +
+      '<span class="kpi-badge">β2=' + fmtNum(fit.beta2, 4) + '</span>';
+  }
+
+  // JS port of src/analytics/yield_curve.py:ns_yield
+  function nsYield(t, b0, b1, b2, lam) {
+    if (t <= 0) return b0 + b1;
+    if (lam === null || lam === undefined || isNaN(lam) || lam <= 0) return b0 + b1;
+    var x = t / lam;
+    var expNeg = Math.exp(-x);
+    var factor = (1 - expNeg) / x;
+    return b0 + b1 * factor + b2 * (factor - expNeg);
+  }
+
+  function nsCurve(fit, tMin, tMax, n) {
+    if (!fit) return [];
+    if (fit.converged !== 1 && fit.converged !== "1" && fit.converged !== true) return [];
+    var b0 = fit.beta0, b1 = fit.beta1, b2 = fit.beta2, lam = fit.lambda;
+    if (b0 === null || b1 === null || b2 === null || lam === null) return [];
+    if (tMax <= tMin || n <= 0) return [];
+    var pts = [];
+    var step = (tMax - tMin) / (n - 1);
+    for (var i = 0; i < n; i++) {
+      var t = tMin + step * i;
+      pts.push([t, nsYield(t, b0, b1, b2, lam)]);
+    }
+    return pts;
+  }
+
+  function symbolSizeFromVolume(vol) {
+    if (vol === null || vol === undefined || isNaN(vol) || vol <= 0) return 6;
+    var s = 6 + Math.log10(vol + 1) * 4;
+    return Math.max(6, Math.min(28, s));
+  }
+
+  function renderChart(bonds, fitBid, fitAsk) {
+    var chart = ensureChart();
+    chart.clear();
+
+    if (!bonds || bonds.length === 0) {
+      showEmpty("No bond points for this snapshot.");
+      return;
+    }
+
+    var bidScatter = [], askScatter = [];
+    var tMin = Infinity, tMax = -Infinity;
+    for (var i = 0; i < bonds.length; i++) {
+      var b = bonds[i];
+      var ttm = b.ttm_years, yld = b.yield;
+      if (ttm === null || yld === null || isNaN(ttm) || isNaN(yld)) continue;
+      var pt = {
+        value: [ttm, yld],
+        symbol: "circle",
+        symbolSize: symbolSizeFromVolume(b.volume),
+        _meta: b
+      };
+      if (ttm < tMin) tMin = ttm;
+      if (ttm > tMax) tMax = ttm;
+      if (b.curve_side === "ask") askScatter.push(pt);
+      else bidScatter.push(pt);
+    }
+
+    if (!isFinite(tMin) || !isFinite(tMax)) {
+      showEmpty("No valid (ttm, yield) points.");
+      return;
+    }
+
+    // Curve range: pad slightly beyond data range.
+    var pad = (tMax - tMin) * 0.05 || 0.5;
+    var curveMin = Math.max(0, tMin - pad);
+    var curveMax = tMax + pad;
+
+    var bidLine = nsCurve(fitBid, curveMin, curveMax, 100);
+    var askLine = nsCurve(fitAsk, curveMin, curveMax, 100);
+
+    var series = [];
+
+    function addScatter(data, side) {
+      if (data.length === 0) return;
+      series.push({
+        name: side + " bonds",
+        type: "scatter",
+        data: data,
+        itemStyle: { color: COLORS[side], opacity: 0.85 },
+        emphasis: { focus: "self" },
+        z: 5
+      });
+    }
+    function addLine(data, side) {
+      if (data.length === 0) return;
+      series.push({
+        name: side + " NS fit",
+        type: "line",
+        data: data,
+        showSymbol: false,
+        smooth: true,
+        lineStyle: { color: COLORS[side], width: 2, type: "solid" },
+        z: 3
+      });
+    }
+
+    addScatter(bidScatter, "bid");
+    addLine(bidLine, "bid");
+    addScatter(askScatter, "ask");
+    addLine(askLine, "ask");
+
+    var option = {
+      grid: AdminCharts.grid({ top: 30 }),
+      tooltip: {
+        trigger: "item",
+        formatter: function (p) {
+          var m = p.data && p.data._meta;
+          if (!m) {
+            var v = p.value;
+            return "ttm " + fmtNum(v[0], 2) + "y<br>yield " + fmtPct(v[1]);
+          }
+          var lines = [];
+          if (m.symbol) lines.push("<b>" + m.symbol + "</b>");
+          lines.push("side: " + m.curve_side);
+          if (m.instrument_code) lines.push("code: " + m.instrument_code);
+          lines.push("ttm: " + fmtNum(m.ttm_years, 2) + "y");
+          if (m.price !== null && m.price !== undefined) lines.push("price: " + fmtInt(m.price));
+          if (m.volume !== null && m.volume !== undefined) lines.push("volume: " + fmtInt(m.volume));
+          lines.push("yield: " + fmtPct(m.yield));
+          if (m.fitted_yield !== null && m.fitted_yield !== undefined) lines.push("fitted: " + fmtPct(m.fitted_yield));
+          if (m.spread_bps !== null && m.spread_bps !== undefined) lines.push("spread: " + fmtNum(m.spread_bps, 1) + "bps");
+          return lines.join("<br>");
+        }
+      },
+      legend: { top: 0, data: ["bid bonds", "bid NS fit", "ask bonds", "ask NS fit"] },
+      xAxis: {
+        type: "value",
+        name: "TTM (years)",
+        nameLocation: "middle",
+        nameGap: 32,
+        min: 0,
+        axisLabel: { formatter: function (v) { return fmtNum(v, 1); } }
+      },
+      yAxis: {
+        type: "value",
+        name: "Yield",
+        axisLabel: { formatter: function (v) { return fmtPct(v); } },
+        scale: true
+      },
+      dataZoom: AdminCharts.dualAxisZoom({ top: 30 }),
+      series: series
+    };
+
+    chart.setOption(option);
+  }
+
+  function loadTime(time) {
+    if (time === null || time === "") return;
+    var t = parseInt(time, 10);
+    var fitBid = state.fitsCache[t + "|bid"];
+    var fitAsk = state.fitsCache[t + "|ask"];
+    renderKpi(kpiBidEl, fitBid);
+    renderKpi(kpiAskEl, fitAsk);
+    setStatus("Loading bonds…");
+
+    var url = "/api/v1/yield-curve/bonds?date=" + encodeURIComponent(state.date) + "&time=" + t + "&side=both";
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var bonds = data.bonds || [];
+        renderChart(bonds, fitBid, fitAsk);
+        setStatus("Snapshot " + state.date + " " + String(t).padStart(6, "0") + " — " + bonds.length + " bond(s).");
+      })
+      .catch(function (err) {
+        showEmpty("Failed to load bonds: " + err.message);
+        setStatus("Error: " + err.message, true);
+      });
+  }
+
+  function loadDate(date) {
+    state.date = date;
+    state.fitsCache = {};
+    state.times = [];
+    timeSelect.disabled = true;
+    timeSelect.innerHTML = '<option value="">— loading —</option>';
+    renderKpi(kpiBidEl, null);
+    renderKpi(kpiAskEl, null);
+    showEmpty("Loading snapshots…");
+
+    var url = "/api/v1/yield-curve/curves?date=" + encodeURIComponent(date) + "&side=both";
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var curves = data.curves || [];
+        var timesSet = {};
+        for (var i = 0; i < curves.length; i++) {
+          var c = curves[i];
+          var tt = c.trade_time;
+          var side = c.curve_side;
+          if (tt === null || tt === undefined) continue;
+          if (!(side in COLORS)) continue;
+          state.fitsCache[tt + "|" + side] = c;
+          timesSet[tt] = true;
+        }
+        var times = Object.keys(timesSet).map(function (s) { return parseInt(s, 10); });
+        times.sort(function (a, b) { return b - a; }); // desc, latest first
+        state.times = times;
+
+        if (times.length === 0) {
+          timeSelect.innerHTML = '<option value="">— no fits —</option>';
+          setStatus("No fits found for " + date + ".");
+          showEmpty("No fits found for this date.");
+          return;
+        }
+
+        var opts = "";
+        for (var j = 0; j < times.length; j++) {
+          var label = String(times[j]).padStart(6, "0");
+          opts += '<option value="' + times[j] + '">' + label + "</option>";
+        }
+        timeSelect.innerHTML = opts;
+        timeSelect.disabled = false;
+        setStatus(times.length + " snapshot(s) for " + date + ".");
+        // auto-select latest
+        timeSelect.value = String(times[0]);
+        loadTime(times[0]);
+      })
+      .catch(function (err) {
+        timeSelect.innerHTML = '<option value="">— error —</option>';
+        setStatus("Error: " + err.message, true);
+        showEmpty("Failed to load fits: " + err.message);
+      });
+  }
+
+  dateInput.addEventListener("change", function () {
+    if (dateInput.value) loadDate(dateInput.value);
+  });
+  timeSelect.addEventListener("change", function () {
+    loadTime(timeSelect.value);
+  });
+
+  showEmpty("Select a trade date to begin.");
+})();
+</script>
+{% endblock %}

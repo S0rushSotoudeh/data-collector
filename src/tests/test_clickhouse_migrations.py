@@ -1,3 +1,4 @@
+import importlib
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -51,6 +52,7 @@ class TestMigrationManagerInternals:
         module_path_3, short_name_3 = versions[3]
         assert "003_create_bond_trades" in module_path_3
         assert short_name_3 == "003_create_bond_trades.py"
+        assert "012_add_parity_ytm_metrics" in versions[12][0]
 
     def test_mark_applied_inserts_row(self) -> None:
         client = MagicMock()
@@ -84,8 +86,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 7
-        assert applied == [1, 2, 3, 4, 5, 6, 7]
+        assert len(new_versions) == 15
+        assert applied == list(range(1, 16))
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -102,12 +104,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == [3, 4, 5, 6, 7]
-        assert applied == [3, 4, 5, 6, 7]
+        assert new_versions == list(range(3, 16))
+        assert applied == list(range(3, 16))
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 16)]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -120,7 +122,29 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 7
+        assert len(new_versions) == 15
+
+    def test_parity_ytm_migration_is_additive_and_reversible(self) -> None:
+        migration = importlib.import_module(
+            "src.db.clickhouse.migrations.versions.012_add_parity_ytm_metrics"
+        )
+        client = MagicMock()
+
+        migration.upgrade(client)
+
+        commands = [call.args[0] for call in client.command.call_args_list]
+        assert len(commands) == 33
+        assert all("ADD COLUMN IF NOT EXISTS" in command for command in commands)
+        assert any("minimum_ytm_spread_bps" in command for command in commands)
+        assert any("make_call_ask_capital_per_contract" in command for command in commands)
+        assert any("make_underlying_bid_ytm_spread_bps" in command for command in commands)
+
+        client.reset_mock()
+        migration.downgrade(client)
+        assert all(
+            "DROP COLUMN IF EXISTS" in call.args[0]
+            for call in client.command.call_args_list
+        )
 
 
 class TestDowngrade:
@@ -186,11 +210,15 @@ class TestPending:
         assert 5 in p
         assert 6 in p
         assert 7 in p
+        assert 8 in p
+        assert 9 in p
+        assert 10 in p
+        assert 12 in p
         assert 1 not in p
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 16)]
 
         p = pending(client)
         assert p == []
@@ -199,7 +227,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(1,), (2,), (3,), (4,), (5,), (6,), (7,)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 16)]
 
         assert check(client) is True
 

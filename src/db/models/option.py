@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Column, DateTime, func, Index
+from sqlalchemy import BigInteger, Column, DateTime, func, Index
 from sqlmodel import SQLModel, Field
 
 
@@ -14,8 +14,8 @@ class OptionInstrument(SQLModel, table=True):  # type: ignore
     symbol: str | None = Field(default=None, max_length=50)
     isin: str | None = Field(default=None, max_length=30, unique=True)
     instrument_id: str | None = Field(default=None, max_length=50, unique=True)
-    total_issued: int | None = Field(default=None)
-    base_volume: int | None = Field(default=None)
+    total_issued: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
+    base_volume: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     market_code: int | None = Field(default=None)
     market_name: str | None = Field(default=None, max_length=100)
     segment_code: str | None = Field(default=None, max_length=10)
@@ -28,7 +28,7 @@ class OptionInstrument(SQLModel, table=True):  # type: ignore
     high_52w: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
     low_yearly: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
     high_yearly: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
-    avg_daily_volume_5y: int | None = Field(default=None)
+    avg_daily_volume_5y: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     last_trade_date: date | None = Field(default=None)
     status: str | None = Field(default=None, max_length=20)
     listing_date: date | None = Field(default=None)
@@ -36,6 +36,7 @@ class OptionInstrument(SQLModel, table=True):  # type: ignore
     strike_price: Decimal | None = Field(default=None, max_digits=18, decimal_places=2)
     expiry_date: date | None = Field(default=None)
     underlying_symbol: str | None = Field(default=None, max_length=50)
+    underlying_instrument_code: str | None = Field(default=None, max_length=20)
     created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime(timezone=True), server_default=func.now()),
@@ -50,5 +51,6 @@ class OptionInstrument(SQLModel, table=True):  # type: ignore
         Index("idx_option_status", "status"),
         Index("idx_option_expiry", "expiry_date"),
         Index("idx_option_underlying", "underlying_symbol"),
+        Index("idx_option_underlying_code", "underlying_instrument_code"),
         Index("idx_option_type", "option_type"),
     )
