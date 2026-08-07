@@ -1,8 +1,11 @@
 stages:
   - test
 
-hello-job:
+runner-test:
   stage: test
+  tags:
+    - nita
   script:
-    - echo "Hello from GitLab CI"
-    
+    - echo "Runner is working"
+    - whoami
+    - hostname
