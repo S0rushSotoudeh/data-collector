@@ -1,7 +1,8 @@
-import os
 from celery import Celery
 from celery.signals import before_task_publish, task_failure, task_postrun, task_prerun
 from celery.schedules import crontab
+
+from src.config import env, env_int
 
 from src.services.operation_runs import (
     TASK_SPECS,
@@ -11,7 +12,7 @@ from src.services.operation_runs import (
     update_run,
 )
 
-_redis_url = f"redis://{os.getenv('REDIS_HOST', 'redis')}:{os.getenv('REDIS_PORT', '6379')}/0"
+_redis_url = env("REDIS_URL")
 
 celery = Celery(
     "data_collector",
@@ -24,31 +25,70 @@ celery.conf.update(
     accept_content=["json"],
     result_serializer="json",
     result_backend=_redis_url,
-    timezone="Asia/Tehran",
+    timezone=env("APP_TIMEZONE"),
     enable_utc=True,
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
 )
 
-beat_hour = int(os.getenv("BEAT_FETCH_HOUR", "1"))
+beat_hour = env_int("BEAT_FETCH_HOUR")
 
 celery.conf.beat_schedule = {
     "fetch-yesterday-bond-order-book": {
         "task": "src.tasks.fetch_yesterday_bond_order_book",
-        "schedule": crontab(hour=beat_hour, minute=0),
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_BOND_ORDER_BOOK_MINUTE")
+        ),
     },
     "fetch-yesterday-bond-trades": {
         "task": "src.tasks.fetch_yesterday_bond_trades",
-        "schedule": crontab(hour=beat_hour, minute=5),
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_BOND_TRADES_MINUTE")
+        ),
     },
-    "sync-option-instruments": {"task": "src.tasks.sync_option_instruments", "schedule": crontab(hour=beat_hour, minute=10)},
-    "sync-stock-instruments": {"task": "src.tasks.sync_stock_instruments", "schedule": crontab(hour=beat_hour, minute=15)},
-    "fetch-yesterday-option-order-book": {"task": "src.tasks.fetch_yesterday_option_orderbook", "schedule": crontab(hour=beat_hour, minute=20)},
-    "fetch-yesterday-option-trades": {"task": "src.tasks.fetch_yesterday_option_trades", "schedule": crontab(hour=beat_hour, minute=25)},
-    "fetch-yesterday-stock-order-book": {"task": "src.tasks.fetch_yesterday_stock_orderbook", "schedule": crontab(hour=beat_hour, minute=30)},
-    "fetch-yesterday-stock-trades": {"task": "src.tasks.fetch_yesterday_stock_trades", "schedule": crontab(hour=beat_hour, minute=35)},
-    "compute-yesterday-option-market-potential": {"task": "src.tasks.compute_option_market_potential_daily", "schedule": crontab(hour=beat_hour, minute=45)},
+    "sync-option-instruments": {
+        "task": "src.tasks.sync_option_instruments",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_OPTION_SYNC_MINUTE")
+        ),
+    },
+    "sync-stock-instruments": {
+        "task": "src.tasks.sync_stock_instruments",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_STOCK_SYNC_MINUTE")
+        ),
+    },
+    "fetch-yesterday-option-order-book": {
+        "task": "src.tasks.fetch_yesterday_option_orderbook",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_OPTION_ORDER_BOOK_MINUTE")
+        ),
+    },
+    "fetch-yesterday-option-trades": {
+        "task": "src.tasks.fetch_yesterday_option_trades",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_OPTION_TRADES_MINUTE")
+        ),
+    },
+    "fetch-yesterday-stock-order-book": {
+        "task": "src.tasks.fetch_yesterday_stock_orderbook",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_STOCK_ORDER_BOOK_MINUTE")
+        ),
+    },
+    "fetch-yesterday-stock-trades": {
+        "task": "src.tasks.fetch_yesterday_stock_trades",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_STOCK_TRADES_MINUTE")
+        ),
+    },
+    "compute-yesterday-option-market-potential": {
+        "task": "src.tasks.compute_option_market_potential_daily",
+        "schedule": crontab(
+            hour=beat_hour, minute=env_int("BEAT_MARKET_POTENTIAL_MINUTE")
+        ),
+    },
 }
 
 celery.autodiscover_tasks(["src.tasks"])

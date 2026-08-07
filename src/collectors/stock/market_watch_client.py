@@ -4,19 +4,14 @@ from typing import Any
 
 import httpx
 
+from src.config import env, env_float, env_int
+
 from src.collectors.stock.models import (
     BestLimitEntry,
     MarketWatchItem,
     StockInstrumentInfo,
     TradeEntry,
 )
-
-CDN_BASE_URL = "https://cdn.tsetmc.com/api"
-LEGACY_BASE_URL = "https://old.tsetmc.com"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-}
-
 
 class StockTsetmcError(Exception):
     pass
@@ -25,27 +20,33 @@ class StockTsetmcError(Exception):
 class StockTsetmcClient:
     def __init__(
         self,
-        concurrency: int = 5,
-        retries: int = 3,
-        timeout: float = 30.0,
-        request_delay: float = 0.5,
+        concurrency: int | None = None,
+        retries: int | None = None,
+        timeout: float | None = None,
+        request_delay: float | None = None,
     ) -> None:
-        self._semaphore = asyncio.Semaphore(concurrency)
-        self._retries = retries
-        self._timeout = timeout
-        self._request_delay = request_delay
+        self._semaphore = asyncio.Semaphore(
+            concurrency if concurrency is not None else env_int("TSETMC_CONCURRENCY")
+        )
+        self._retries = retries if retries is not None else env_int("TSETMC_RETRIES")
+        self._timeout = timeout if timeout is not None else env_float("TSETMC_TIMEOUT")
+        self._request_delay = (
+            request_delay
+            if request_delay is not None
+            else env_float("TSETMC_REQUEST_DELAY")
+        )
         self._cdn_client: httpx.AsyncClient | None = None
         self._legacy_client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "StockTsetmcClient":
         self._cdn_client = httpx.AsyncClient(
-            base_url=CDN_BASE_URL,
-            headers=HEADERS,
+            base_url=env("TSETMC_CDN_BASE_URL"),
+            headers={"User-Agent": env("TSETMC_USER_AGENT")},
             timeout=self._timeout,
         )
         self._legacy_client = httpx.AsyncClient(
-            base_url=LEGACY_BASE_URL,
-            headers=HEADERS,
+            base_url=env("TSETMC_LEGACY_BASE_URL"),
+            headers={"User-Agent": env("TSETMC_USER_AGENT")},
             timeout=self._timeout,
         )
         return self

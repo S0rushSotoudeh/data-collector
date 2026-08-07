@@ -1,7 +1,7 @@
-import os
-
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
+
+from src.config import env
 
 
 class BasicAuthBackend(AuthenticationBackend):
@@ -9,8 +9,8 @@ class BasicAuthBackend(AuthenticationBackend):
         form = await request.form()
         username: str = form.get("username", "")
         password: str = form.get("password", "")
-        admin_user = os.environ["ADMIN_USER"]
-        admin_pass = os.environ["ADMIN_PASSWORD"]
+        admin_user = env("ADMIN_USER")
+        admin_pass = env("ADMIN_PASSWORD")
         if username == admin_user and password == admin_pass:
             request.session.update({"user": username})
             return True

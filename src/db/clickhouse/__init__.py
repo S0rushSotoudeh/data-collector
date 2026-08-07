@@ -1,16 +1,13 @@
-import os
 import time
 
 import clickhouse_connect
 from clickhouse_connect.driver import Client
 from clickhouse_connect.driver.asyncclient import AsyncClient
 
+from src.config import env, env_float, env_int
+
 _client: Client | None = None
 _async_client: AsyncClient | None = None
-_RETRIES = 3
-_RETRY_DELAY = 1.0
-
-
 def get_client() -> Client:
     global _client
     if _client is not None:
@@ -20,25 +17,27 @@ def get_client() -> Client:
         except Exception:
             _client = None
 
+    retries = env_int("CLICKHOUSE_CONNECT_RETRIES")
+    retry_delay = env_float("CLICKHOUSE_RETRY_DELAY")
     last_exc: Exception | None = None
-    for attempt in range(_RETRIES):
+    for attempt in range(retries):
         try:
             _client = clickhouse_connect.get_client(
-                host=os.getenv("CLICKHOUSE_HOST", "localhost"),
-                port=int(os.getenv("CLICKHOUSE_PORT", "9000")),
-                username=os.getenv("CLICKHOUSE_USER", "default"),
-                password=os.getenv("CLICKHOUSE_PASSWORD", ""),
-                connect_timeout=10,
+                host=env("CLICKHOUSE_HOST"),
+                port=env_int("CLICKHOUSE_PORT"),
+                username=env("CLICKHOUSE_USER"),
+                password=env("CLICKHOUSE_PASSWORD"),
+                connect_timeout=env_int("CLICKHOUSE_CONNECT_TIMEOUT"),
             )
             _client.command("SELECT 1")
             return _client
         except Exception as e:
             last_exc = e
-            if attempt < _RETRIES - 1:
-                time.sleep(_RETRY_DELAY * (attempt + 1))
+            if attempt < retries - 1:
+                time.sleep(retry_delay * (attempt + 1))
 
     raise ConnectionError(
-        f"Cannot connect to ClickHouse after {_RETRIES} attempts"
+        f"Cannot connect to ClickHouse after {retries} attempts"
     ) from last_exc
 
 
@@ -51,25 +50,27 @@ async def get_async_client() -> AsyncClient:
         except Exception:
             _async_client = None
 
+    retries = env_int("CLICKHOUSE_CONNECT_RETRIES")
+    retry_delay = env_float("CLICKHOUSE_RETRY_DELAY")
     last_exc: Exception | None = None
-    for attempt in range(_RETRIES):
+    for attempt in range(retries):
         try:
             _async_client = await clickhouse_connect.get_async_client(
-                host=os.getenv("CLICKHOUSE_HOST", "localhost"),
-                port=int(os.getenv("CLICKHOUSE_PORT", "9000")),
-                username=os.getenv("CLICKHOUSE_USER", "default"),
-                password=os.getenv("CLICKHOUSE_PASSWORD", ""),
-                connect_timeout=10,
+                host=env("CLICKHOUSE_HOST"),
+                port=env_int("CLICKHOUSE_PORT"),
+                username=env("CLICKHOUSE_USER"),
+                password=env("CLICKHOUSE_PASSWORD"),
+                connect_timeout=env_int("CLICKHOUSE_CONNECT_TIMEOUT"),
             )
             await _async_client.query("SELECT 1")
             return _async_client
         except Exception as e:
             last_exc = e
-            if attempt < _RETRIES - 1:
-                await _async_sleep(_RETRY_DELAY * (attempt + 1))
+            if attempt < retries - 1:
+                await _async_sleep(retry_delay * (attempt + 1))
 
     raise ConnectionError(
-        f"Cannot connect to ClickHouse after {_RETRIES} attempts"
+        f"Cannot connect to ClickHouse after {retries} attempts"
     ) from last_exc
 
 

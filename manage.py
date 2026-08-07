@@ -19,7 +19,6 @@ python manage.py shell                    # Open interactive Python shell
 """
 
 import asyncio
-import os
 import sys
 import argparse
 from datetime import date
@@ -27,14 +26,11 @@ from datetime import date
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from src.db.config import get_database_url
+
 
 def _get_db_url() -> str:
-    user = os.getenv("POSTGRES_USER", "dc_user")
-    password = os.getenv("POSTGRES_PASSWORD", "dc_pass")
-    host = os.getenv("POSTGRES_HOST", "localhost")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    db = os.getenv("POSTGRES_DB", "dc_metadata")
-    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{db}"
+    return get_database_url()
 
 
 def _setup_imports():

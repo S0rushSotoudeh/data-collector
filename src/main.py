@@ -1,10 +1,9 @@
-import os
-
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import RedirectResponse
 
 from src.admin import create_admin
+from src.config import env
 from src.admin.auth import BasicAuthBackend
 from src.routes.admin_tasks import router as admin_tasks_router
 from src.routes.yield_curve import router as yield_curve_router
@@ -18,7 +17,7 @@ from src.routes.market_potential import router as market_potential_router
 from src.routes.box_spread import router as box_spread_router
 from src.routes.option_mispricing import router as option_mispricing_router
 
-_SECRET_KEY = os.environ["SECRET_KEY"]
+_SECRET_KEY = env("SECRET_KEY")
 
 app = FastAPI(
     title="Data Collector API",

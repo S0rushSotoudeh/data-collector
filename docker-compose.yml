@@ -1,149 +1,151 @@
-services:
-  graphify:
-    profiles: ["tools"]
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: graphify
-    user: "${UID:-1000}:${GID:-1000}"
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
-    environment:
-      GRAPHIFY_QUERY_LOG_DISABLE: "1"
-      HOME: /tmp/graphify-home
+x-app-build: &app-build
+  context: .
+  dockerfile: Dockerfile
+  target: development
+  args:
+    PYTHON_VERSION: "${PYTHON_VERSION}"
+    APP_PORT: "${APP_PORT}"
+    APP_USER: "${APP_USER}"
+    PIP_PACKAGE: "${PIP_PACKAGE}"
+    UV_PACKAGE: "${UV_PACKAGE}"
+    PYTHONUNBUFFERED: "${PYTHONUNBUFFERED}"
+    PYTHONDONTWRITEBYTECODE: "${PYTHONDONTWRITEBYTECODE}"
 
+x-app-volumes: &app-volumes
+  - ./src:/app/src
+  - ./pyproject.toml:/app/pyproject.toml
+
+x-app-depends-on: &app-depends-on
+  redis:
+    condition: service_started
+  postgres:
+    condition: service_healthy
+  clickhouse:
+    condition: service_healthy
+
+services:
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    container_name: dc-api
-    user: "${UID:-1000}:${GID:-1000}" 
+    build: *app-build
+    container_name: "${API_CONTAINER_NAME}"
+    user: "${UID}:${GID}"
     ports:
-      - "8000:8000"
+      - "${API_BIND_HOST}:${APP_PORT}:${APP_PORT}"
     volumes:
       - ./src:/app/src
       - ./pyproject.toml:/app/pyproject.toml
       - ./explore-data-sources:/app/explore-data-sources
-    env_file:
-      - .env
-    depends_on:
-      redis:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-    restart: unless-stopped
+    env_file: .env
+    depends_on: *app-depends-on
+    restart: "${RESTART_POLICY}"
 
   celery-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    user: "${UID:-1000}:${GID:-1000}"
-    volumes:
-      - ./src:/app/src
-      - ./pyproject.toml:/app/pyproject.toml
-    env_file:
-      - .env
-    depends_on:
-      redis:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
+    build: *app-build
+    container_name: "${CELERY_WORKER_CONTAINER_NAME}"
+    user: "${UID}:${GID}"
+    volumes: *app-volumes
+    env_file: .env
+    depends_on: *app-depends-on
     entrypoint: ["/app/entrypoint-celery.sh"]
-    command: ["celery", "-A", "src.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
-    restart: unless-stopped
+    command:
+      [
+        "celery",
+        "-A",
+        "src.celery_app",
+        "worker",
+        "--loglevel=${CELERY_LOG_LEVEL}",
+        "--concurrency=${CELERY_WORKER_CONCURRENCY}",
+      ]
+    restart: "${RESTART_POLICY}"
 
   celery-beat:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    container_name: dc-celery-beat
-    user: "${UID:-1000}:${GID:-1000}"
-    volumes:
-      - ./src:/app/src
-      - ./pyproject.toml:/app/pyproject.toml
-    env_file:
-      - .env
-    depends_on:
-      redis:
-        condition: service_started
-      postgres:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
+    build: *app-build
+    container_name: "${CELERY_BEAT_CONTAINER_NAME}"
+    user: "${UID}:${GID}"
+    volumes: *app-volumes
+    env_file: .env
+    depends_on: *app-depends-on
     entrypoint: ["/app/entrypoint-celery.sh"]
-    command: ["celery", "-A", "src.celery_app", "beat", "--loglevel=info", "--schedule", "/tmp/celerybeat-schedule"]
-    restart: unless-stopped
+    command:
+      [
+        "celery",
+        "-A",
+        "src.celery_app",
+        "beat",
+        "--loglevel=${CELERY_LOG_LEVEL}",
+        "--schedule",
+        "/tmp/celerybeat-schedule",
+      ]
+    restart: "${RESTART_POLICY}"
 
   redis:
-    image: redis:latest
-    container_name: dc-redis
+    image: "${REDIS_IMAGE}"
+    container_name: "${REDIS_CONTAINER_NAME}"
+    command: ["redis-server", "--port", "${REDIS_PORT}"]
     ports:
-      - "6379:6379"
+      - "${REDIS_BIND_HOST}:${REDIS_HOST_PORT}:${REDIS_PORT}"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
+      test: ["CMD", "redis-cli", "-p", "${REDIS_PORT}", "ping"]
+      interval: "${HEALTHCHECK_INTERVAL}"
+      timeout: "${HEALTHCHECK_TIMEOUT}"
+      retries: ${HEALTHCHECK_RETRIES}
+    restart: "${RESTART_POLICY}"
 
   postgres:
-    image: postgres:latest
-    container_name: dc-postgres
+    image: "${POSTGRES_IMAGE}"
+    container_name: "${POSTGRES_CONTAINER_NAME}"
+    command: ["postgres", "-p", "${POSTGRES_PORT}"]
     ports:
-      - "5432:5432"
+      - "${POSTGRES_BIND_HOST}:${POSTGRES_HOST_PORT}:${POSTGRES_PORT}"
     environment:
-      - POSTGRES_USER=dc_user
-      - POSTGRES_PASSWORD=dc_pass
-      - POSTGRES_DB=dc_metadata
+      POSTGRES_USER: "${POSTGRES_USER}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB}"
     volumes:
-      - postgres_data2:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dc_user -d dc_metadata"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h ${HEALTHCHECK_HOST} -p ${POSTGRES_PORT} -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
+      interval: "${HEALTHCHECK_INTERVAL}"
+      timeout: "${HEALTHCHECK_TIMEOUT}"
+      retries: ${HEALTHCHECK_RETRIES}
+    restart: "${RESTART_POLICY}"
 
   clickhouse:
-    image: clickhouse/clickhouse-server:latest
-    container_name: dc-clickhouse
+    image: "${CLICKHOUSE_IMAGE}"
+    container_name: "${CLICKHOUSE_CONTAINER_NAME}"
     ports:
-      - "8123:8123"
-      - "9000:9000"
+      - "${CLICKHOUSE_BIND_HOST}:${CLICKHOUSE_HTTP_HOST_PORT}:${CLICKHOUSE_PORT}"
+      - "${CLICKHOUSE_BIND_HOST}:${CLICKHOUSE_NATIVE_HOST_PORT}:${CLICKHOUSE_NATIVE_PORT}"
     environment:
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=clickhouse
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD}"
     volumes:
       - clickhouse_data:/var/lib/clickhouse
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    restart: unless-stopped
+      test:
+        [
+          "CMD",
+          "wget",
+          "--spider",
+          "-q",
+          "http://${HEALTHCHECK_HOST}:${CLICKHOUSE_PORT}/ping",
+        ]
+      interval: "${HEALTHCHECK_INTERVAL}"
+      timeout: "${HEALTHCHECK_TIMEOUT}"
+      retries: ${HEALTHCHECK_RETRIES}
+    restart: "${RESTART_POLICY}"
 
   flower:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: development
-    container_name: dc-flower
-    user: "${UID:-1000}:${GID:-1000}"
+    build: *app-build
+    container_name: "${FLOWER_CONTAINER_NAME}"
+    user: "${UID}:${GID}"
     ports:
-      - "127.0.0.1:5555:5555"
-    volumes:
-      - ./src:/app/src
-      - ./pyproject.toml:/app/pyproject.toml
-    env_file:
-      - .env
+      - "${FLOWER_BIND_HOST}:${FLOWER_HOST_PORT}:${FLOWER_PORT}"
+    volumes: *app-volumes
+    env_file: .env
     depends_on:
       redis:
         condition: service_started
@@ -154,17 +156,17 @@ services:
         "-A",
         "src.celery_app",
         "flower",
-        "--port=5555",
-        "--broker=redis://redis:6379/0",
-        "--basic-auth=${FLOWER_BASIC_AUTH:-admin:changeme}",
+        "--port=${FLOWER_PORT}",
+        "--broker=${REDIS_URL}",
+        "--basic-auth=${FLOWER_BASIC_AUTH}",
       ]
-    restart: unless-stopped
+    restart: "${RESTART_POLICY}"
 
   dbgate:
-    image: dbgate/dbgate:latest
-    container_name: dc-dbgate
+    image: "${DBGATE_IMAGE}"
+    container_name: "${DBGATE_CONTAINER_NAME}"
     ports:
-      - "3090:3000"
+      - "${DBGATE_BIND_HOST}:${DBGATE_HOST_PORT}:${DBGATE_PORT}"
     volumes:
       - dbgate_data:/root/.local/share/dbgate
     depends_on:
@@ -174,10 +176,9 @@ services:
         condition: service_healthy
       clickhouse:
         condition: service_healthy
-
-    restart: unless-stopped
+    restart: "${RESTART_POLICY}"
 
 volumes:
-  postgres_data2:
+  postgres_data:
   clickhouse_data:
   dbgate_data:
