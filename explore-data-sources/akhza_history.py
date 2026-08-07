@@ -1,9 +1,10 @@
 import httpx
 import json
+import os
 from datetime import datetime, timedelta
 
-BASE = "https://cdn.tsetmc.com/api"
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+BASE = os.environ["TSETMC_CDN_BASE_URL"]
+HEADERS = {"User-Agent": os.environ["TSETMC_USER_AGENT"]}
 
 def get_akhza_instruments():
     url = f"{BASE}/Instrument/GetInstrumentSearch/%D8%A7%D8%AE%D8%B2%D8%A7"

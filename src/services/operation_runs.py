@@ -113,6 +113,7 @@ TASK_SPECS: dict[str, TaskSpec] = {
     "src.tasks.run_parity_analysis": TaskSpec("parity", "parity.analysis", "put_call_parity"),
     "src.tasks.run_box_spread_analysis": TaskSpec("box_spread", "box_spread.analysis", "box_spread"),
     "src.tasks.run_iv_surface": TaskSpec("iv_orc", "iv_orc.surface", "iv_surface_orc_wing"),
+    "src.tasks.run_option_mispricing": TaskSpec("option_mispricing", "option_mispricing.market_scan", "market_wide"),
 }
 
 

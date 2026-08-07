@@ -349,6 +349,25 @@ def run_iv_surface(run_id: str) -> dict:
         raise
 
 
+@shared_task(bind=True, max_retries=2)
+def run_option_mispricing(self, run_id: str) -> dict:
+    """Run an immutable market-wide option mispricing replay."""
+    from src.analytics.mispricing_engine import fail_run, process_run
+
+    try:
+        return process_run(run_id)
+    except Exception as exc:
+        if self.request.retries < self.max_retries:
+            logger.warning("Retrying option mispricing run %s after error: %s", run_id, exc)
+            raise self.retry(exc=exc, countdown=30 * (self.request.retries + 1))
+        logger.exception("Option mispricing run %s failed", run_id)
+        try:
+            fail_run(run_id, str(exc))
+        except Exception:
+            logger.exception("Could not mark option mispricing run %s failed", run_id)
+        raise
+
+
 @shared_task
 def compute_option_market_potential_daily(day_str: str | None = None) -> dict:
     from src.analytics.market_potential import compute_daily

@@ -69,6 +69,9 @@ class OperationRunsView(BaseView):
             elif self.family == "iv_orc":
                 row["detail_url"] = f"/admin/options-iv-surface?run_id={item.run_id}"
                 row["detail_label"] = "Visualization"
+            elif self.family == "option_mispricing":
+                row["detail_url"] = f"/admin/options-mispricing?run_id={item.run_id}"
+                row["detail_label"] = "Ranking"
             rows.append(row)
         total_pages = max(1, ceil(total / _PAGE_SIZE))
         ctx = {
@@ -171,4 +174,18 @@ class BoxSpreadRunsView(OperationRunsView):
 
     @expose("/box-spread-runs", methods=["GET"])
     async def box_spread_runs(self, request: Request) -> HTMLResponse:
+        return await self._runs(request)
+
+
+class OptionMispricingRunsView(OperationRunsView):
+    name = "Mispricing Runs"
+    identity = "option-mispricing-runs"
+    icon = "fa-solid fa-ranking-star"
+    category = "Options Analytics"
+    family = "option_mispricing"
+    page_title = "Option Mispricing Runs"
+    page_subtitle = "Immutable market-wide date-driven ORC valuation scans"
+
+    @expose("/option-mispricing-runs", methods=["GET"])
+    async def option_mispricing_runs(self, request: Request) -> HTMLResponse:
         return await self._runs(request)

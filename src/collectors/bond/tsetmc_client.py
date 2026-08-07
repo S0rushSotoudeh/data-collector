@@ -5,12 +5,7 @@ from typing import Any
 import httpx
 
 from src.collectors.bond.models import BestLimitEntry, BondInstrumentInfo, BondSearchItem, TradeEntry
-
-BASE_URL = "https://cdn.tsetmc.com/api"
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-}
-
+from src.config import env, env_float, env_int
 
 class TsetmcError(Exception):
     pass
@@ -19,21 +14,27 @@ class TsetmcError(Exception):
 class TsetmcClient:
     def __init__(
         self,
-        concurrency: int = 5,
-        retries: int = 3,
-        timeout: float = 30.0,
-        request_delay: float = 0.5,
+        concurrency: int | None = None,
+        retries: int | None = None,
+        timeout: float | None = None,
+        request_delay: float | None = None,
     ) -> None:
-        self._semaphore = asyncio.Semaphore(concurrency)
-        self._retries = retries
-        self._timeout = timeout
-        self._request_delay = request_delay
+        self._semaphore = asyncio.Semaphore(
+            concurrency if concurrency is not None else env_int("TSETMC_CONCURRENCY")
+        )
+        self._retries = retries if retries is not None else env_int("TSETMC_RETRIES")
+        self._timeout = timeout if timeout is not None else env_float("TSETMC_TIMEOUT")
+        self._request_delay = (
+            request_delay
+            if request_delay is not None
+            else env_float("TSETMC_REQUEST_DELAY")
+        )
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> "TsetmcClient":
         self._client = httpx.AsyncClient(
-            base_url=BASE_URL,
-            headers=HEADERS,
+            base_url=env("TSETMC_CDN_BASE_URL"),
+            headers={"User-Agent": env("TSETMC_USER_AGENT")},
             timeout=self._timeout,
         )
         return self
