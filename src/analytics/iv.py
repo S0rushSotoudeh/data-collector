@@ -120,6 +120,16 @@ class WingParameters:
     usm: float = 0.5
 
 
+@dataclass(frozen=True)
+class RobustWingFit:
+    parameters: WingParameters
+    rmse: float
+    converged: bool
+    kept_indices: tuple[int, ...]
+    excluded_indices: tuple[int, ...]
+    passes: int
+
+
 def _smooth_value(x: float, cutoff: float, smoothing: float, vc: float, sc: float, curvature: float) -> float:
     """Quadratic transition from the central parabola to a flat outer level."""
     outer = cutoff * (1.0 + smoothing)
@@ -153,6 +163,7 @@ def orc_wing(x: float, params: WingParameters) -> float:
 
 def fit_orc_wing(
     log_moneyness: Sequence[float], iv: Sequence[float], weights: Sequence[float] | None = None,
+    *, loss: str = "linear", f_scale: float = 1.0,
 ) -> tuple[WingParameters, float, bool]:
     x = np.asarray(log_moneyness, dtype=float)
     y = np.asarray(iv, dtype=float)
@@ -174,11 +185,61 @@ def fit_orc_wing(
     result = least_squares(
         residual, np.array([vc0, slope0, 0.1, 0.1, dc0, uc0]),
         bounds=(np.array([MIN_IV, -10, -50, -50, -2, 1e-4]), np.array([MAX_IV, 10, 50, 50, -1e-4, 2])),
+        loss=loss, f_scale=max(float(f_scale), 1e-8),
         max_nfev=3000, xtol=1e-12, ftol=1e-12, gtol=1e-12,
     )
     params = unpack(result.x)
     rmse = float(math.sqrt(np.average(np.square([orc_wing(float(z), params) - target for z, target in zip(x, y)]), weights=np.square(w))))
     return params, rmse, bool(result.success and np.all(np.isfinite(result.x)))
+
+
+def fit_orc_wing_robust(
+    log_moneyness: Sequence[float],
+    iv: Sequence[float],
+    weights: Sequence[float] | None = None,
+    *,
+    mad_limit: float = 3.5,
+    max_passes: int = 3,
+) -> RobustWingFit:
+    """Fit one Wing surface with iterative MAD rejection.
+
+    Coverage is checked after every rejection pass so a surface is never
+    published with fewer than seven unique strikes or without observations on
+    both sides of the forward.
+    """
+    x = np.asarray(log_moneyness, dtype=float)
+    y = np.asarray(iv, dtype=float)
+    w = np.ones_like(x) if weights is None else np.asarray(weights, dtype=float)
+    if not (len(x) == len(y) == len(w)):
+        raise ValueError("mismatched_fit_inputs")
+    active = np.ones(len(x), dtype=bool)
+    passes = 0
+    params: WingParameters | None = None
+    rmse = math.nan
+    converged = False
+    for pass_number in range(1, max(1, max_passes) + 1):
+        indices = np.flatnonzero(active)
+        if len(indices) < 7 or len(np.unique(x[indices])) < 7 or not np.any(x[indices] < 0) or not np.any(x[indices] > 0):
+            reason = "insufficient_strikes_after_outlier_rejection" if passes else "insufficient_strikes"
+            raise ValueError(reason)
+        y_active = y[indices]
+        scale = max(.0025, float(np.median(np.abs(y_active - np.median(y_active)))) * .25)
+        params, rmse, converged = fit_orc_wing(
+            x[indices], y_active, w[indices], loss="cauchy", f_scale=scale,
+        )
+        passes = pass_number
+        residuals = np.asarray([orc_wing(float(value), params) for value in x[indices]]) - y[indices]
+        center = float(np.median(residuals))
+        mad = float(np.median(np.abs(residuals - center)))
+        threshold = max(1e-6, mad_limit * 1.4826 * mad)
+        rejected_local = np.abs(residuals - center) > threshold
+        if not np.any(rejected_local) or pass_number == max_passes:
+            break
+        active[indices[rejected_local]] = False
+    assert params is not None
+    kept = tuple(int(value) for value in np.flatnonzero(active))
+    excluded = tuple(int(value) for value in np.flatnonzero(~active))
+    return RobustWingFit(params, float(rmse), bool(converged), kept, excluded, passes)
 
 
 def point_weight(vega: float, depth: float, quote_age_seconds: float, max_quote_age_seconds: float, penalty: float = 1.0) -> float:

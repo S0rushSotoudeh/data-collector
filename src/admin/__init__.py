@@ -14,11 +14,12 @@ from src.admin.option.parity_clickhouse_views import ParityAnalysisSnapshotsView
 from src.admin.option.iv_views import IVSurfaceView, OptionsMarketPotentialView
 from src.admin.option.iv_clickhouse_views import OptionIVPointsView, ORCWingFitsView
 from src.admin.option.box_spread_views import BoxSpreadView
+from src.admin.option.mispricing_views import OptionMispricingView
 from src.admin.option.box_spread_clickhouse_views import BoxSpreadPricingsView, BoxSpreadSnapshotsView
 from src.admin.operations_views import OptionPricingConventionAdmin
 from src.admin.run_views import (
     BoxSpreadRunsView, CollectionRunsView, IVORCRunsView, MarketPotentialRunsView, ParityRunsView,
-    YieldCurveRunsView,
+    YieldCurveRunsView, OptionMispricingRunsView,
 )
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.task_views import CeleryTasksView
@@ -48,6 +49,7 @@ def create_admin(
     admin.add_view(BoxSpreadView)
     admin.add_view(OptionsMarketPotentialView)
     admin.add_view(IVSurfaceView)
+    admin.add_view(OptionMispricingView)
     admin.add_view(OptionIVPointsView)
     admin.add_view(ORCWingFitsView)
     admin.add_view(OptionPricingConventionAdmin)
@@ -57,6 +59,7 @@ def create_admin(
     admin.add_view(BoxSpreadSnapshotsView)
     admin.add_view(BoxSpreadPricingsView)
     admin.add_view(IVORCRunsView)
+    admin.add_view(OptionMispricingRunsView)
     admin.add_view(MarketPotentialRunsView)
     admin.add_view(StockOrderBookView)
     admin.add_view(StockTradesView)
