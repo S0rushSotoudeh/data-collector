@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date, datetime
 import math
 from typing import Any
@@ -91,6 +92,86 @@ async def get_fits(run_id: str, limit: int = 50000) -> list[dict[str, Any]]:
         parameters={"rid": run_id, "lim": limit},
     )
     return _dict_rows(result)
+
+
+async def get_timeline(run_id: str) -> tuple[list[datetime], list[date]]:
+    """Return the compact navigation data needed to browse one IV run."""
+    client = await get_async_client()
+    snapshots = await client.query(
+        f"SELECT DISTINCT snapshot_time FROM `{POINTS_TABLE}` WHERE run_id = {{rid:UUID}} ORDER BY snapshot_time",
+        parameters={"rid": run_id},
+    )
+    expiries = await client.query(
+        f"SELECT DISTINCT expiry_date FROM `{POINTS_TABLE}` WHERE run_id = {{rid:UUID}} ORDER BY expiry_date",
+        parameters={"rid": run_id},
+    )
+    return [row[0] for row in snapshots.result_rows], [row[0] for row in expiries.result_rows]
+
+
+async def get_snapshot_points(run_id: str, snapshot_time: datetime) -> list[dict[str, Any]]:
+    """Chart-ready accepted IV observations for one snapshot only."""
+    client = await get_async_client()
+    result = await client.query(
+        f"SELECT snapshot_time, expiry_date, side, option_type, strike, forward, iv "
+        f"FROM `{POINTS_TABLE}` WHERE run_id = {{rid:UUID}} AND snapshot_time = {{snapshot:DateTime64(3)}} "
+        "AND rejection_reason = '' ORDER BY expiry_date, side, strike, instrument_code",
+        parameters={"rid": run_id, "snapshot": snapshot_time},
+    )
+    return _dict_rows(result)
+
+
+async def get_snapshot_fits(run_id: str, snapshot_time: datetime) -> list[dict[str, Any]]:
+    """All fit parameters necessary to render one snapshot's two-sided surface."""
+    client = await get_async_client()
+    result = await client.query(
+        f"SELECT snapshot_time, expiry_date, side, forward, ttm_years, vc, sc, pc, cc, dc, uc, "
+        f"dsm, usm, rmse, point_count, converged, quality_flags FROM `{FITS_TABLE}` "
+        "WHERE run_id = {rid:UUID} AND snapshot_time = {snapshot:DateTime64(3)} "
+        "ORDER BY expiry_date, side",
+        parameters={"rid": run_id, "snapshot": snapshot_time},
+    )
+    return _dict_rows(result)
+
+
+async def get_snapshot_rejection_counts(run_id: str, snapshot_time: datetime) -> dict[str, int]:
+    """Return all raw-observation outcomes, including the valid empty-reason bucket."""
+    client = await get_async_client()
+    result = await client.query(
+        f"SELECT rejection_reason, count() AS count FROM `{POINTS_TABLE}` "
+        "WHERE run_id = {rid:UUID} AND snapshot_time = {snapshot:DateTime64(3)} "
+        "GROUP BY rejection_reason",
+        parameters={"rid": run_id, "snapshot": snapshot_time},
+    )
+    return {str(reason): int(count) for reason, count in result.result_rows}
+
+
+async def get_history(run_id: str, expiry_date: date, side: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Load only the selected expiry/side's compact intraday chart series."""
+    client = await get_async_client()
+    fits = await client.query(
+        f"SELECT snapshot_time, ttm_years, vc, sc, pc, cc, rmse, converged, quality_flags "
+        f"FROM `{FITS_TABLE}` WHERE run_id = {{rid:UUID}} AND expiry_date = {{expiry:Date}} "
+        "AND side = {side:String} ORDER BY snapshot_time",
+        parameters={"rid": run_id, "expiry": expiry_date, "side": side},
+    )
+    forwards = await client.query(
+        f"SELECT snapshot_time, forward_lower, forward, forward_upper, rate FROM `{POINTS_TABLE}` "
+        "WHERE run_id = {rid:UUID} AND expiry_date = {expiry:Date} AND side = {side:String} "
+        "AND forward IS NOT NULL ORDER BY snapshot_time, instrument_code LIMIT 1 BY snapshot_time",
+        parameters={"rid": run_id, "expiry": expiry_date, "side": side},
+    )
+    return _dict_rows(fits), _dict_rows(forwards)
+
+
+def stream_points(run_id: str) -> Iterator[list[tuple[Any, ...]]]:
+    """Yield the full raw-point result in ClickHouse blocks for CSV exports."""
+    client = _ensure_client(None)
+    query = (
+        f"SELECT {', '.join(POINT_COLUMNS)} FROM `{POINTS_TABLE}` WHERE run_id = {{rid:UUID}} "
+        "ORDER BY snapshot_time, expiry_date, side, strike, instrument_code"
+    )
+    with client.query_row_block_stream(query, parameters={"rid": run_id}) as stream:
+        yield from stream
 
 
 def _analytics_where(

@@ -5,7 +5,7 @@ import io
 import json
 import math
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -17,7 +17,17 @@ from starlette.responses import StreamingResponse
 from src.analytics.iv import MODEL_VERSION, WingParameters, orc_wing
 from src.analytics.iv_config import IVSurfaceRunConfig
 from src.analytics.parity_engine import aligned_snapshots
-from src.db.clickhouse.iv_surface import get_fits, get_points
+from src.db.clickhouse.iv_surface import (
+    POINT_COLUMNS,
+    get_fits,
+    get_history,
+    get_points,
+    get_snapshot_fits,
+    get_snapshot_points,
+    get_snapshot_rejection_counts,
+    get_timeline,
+    stream_points,
+)
 from src.db.models.operations import OptionPricingConvention
 from src.db.models.stock import StockInstrument
 from src.db.session import SessionLocal
@@ -118,6 +128,56 @@ async def iv_fits(request: Request, run_id: uuid.UUID, limit: int = Query(50000,
     return {"items": await get_fits(str(run_id), limit)}
 
 
+@router.get("/api/v1/iv-surface/runs/{run_id}/timeline")
+async def iv_timeline(request: Request, run_id: uuid.UUID):
+    await _checked_run(request, run_id)
+    snapshots, expiries = await get_timeline(str(run_id))
+    return {"snapshots": snapshots, "expiries": expiries}
+
+
+@router.get("/api/v1/iv-surface/runs/{run_id}/snapshot")
+async def iv_snapshot(
+    request: Request,
+    run_id: uuid.UUID,
+    snapshot_time: datetime,
+    steps: int = Query(41, ge=11, le=201),
+):
+    await _checked_run(request, run_id)
+    rejection_counts = await get_snapshot_rejection_counts(str(run_id), snapshot_time)
+    if not rejection_counts:
+        raise HTTPException(status_code=404, detail="IV snapshot not found for this run")
+    points = await get_snapshot_points(str(run_id), snapshot_time)
+    fits = await get_snapshot_fits(str(run_id), snapshot_time)
+    grid = []
+    for fit in fits:
+        if not fit["converged"]:
+            continue
+        params = WingParameters(**{name: float(fit[name]) for name in ("vc", "sc", "pc", "cc", "dc", "uc")})
+        for index in range(steps):
+            x = -1.0 + 2.0 * index / (steps - 1)
+            grid.append({
+                "snapshot_time": fit["snapshot_time"], "expiry_date": fit["expiry_date"], "side": fit["side"],
+                "log_moneyness": x, "dte": float(fit["ttm_years"]) * 365.25, "iv": orc_wing(x, params),
+                "quality_flags": fit["quality_flags"],
+            })
+    valid_point_count = rejection_counts.pop("", 0)
+    return {
+        "snapshot_time": snapshot_time,
+        "points": points,
+        "fits": fits,
+        "grid": grid,
+        "valid_point_count": valid_point_count,
+        "rejection_counts": rejection_counts,
+    }
+
+
+@router.get("/api/v1/iv-surface/runs/{run_id}/history")
+async def iv_history(request: Request, run_id: uuid.UUID, expiry_date: date, side: str = Query(..., pattern="^(bid|ask)$")):
+    await _checked_run(request, run_id)
+    fits, forwards = await get_history(str(run_id), expiry_date, side)
+    return {"fits": fits, "forwards": forwards}
+
+
 @router.get("/api/v1/iv-surface/runs/{run_id}/grid")
 async def iv_grid(request: Request, run_id: uuid.UUID, steps: int = Query(41, ge=11, le=201)):
     await _checked_run(request, run_id)
@@ -137,21 +197,38 @@ async def iv_grid(request: Request, run_id: uuid.UUID, steps: int = Query(41, ge
     return {"items": items}
 
 
-def _csv_response(filename: str, fields: list[str], rows: list[dict[str, Any]]) -> StreamingResponse:
+def _csv_stream(run_id: str, run: dict[str, Any]):
+    config = json.loads(run["config_json"])
+    extras = (
+        run["interval_seconds"],
+        json.dumps(config, sort_keys=True),
+        run["pricing_convention_version"],
+        run["model_version"],
+    )
+    fields = [
+        *POINT_COLUMNS,
+        "run_interval_seconds",
+        "run_config_json",
+        "pricing_convention_version",
+        "model_version",
+    ]
     buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
-    writer.writeheader(); writer.writerows(rows)
-    return StreamingResponse(iter([buffer.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    writer = csv.writer(buffer)
+    writer.writerow(fields)
+    yield buffer.getvalue()
+    for block in stream_points(run_id):
+        buffer.seek(0)
+        buffer.truncate(0)
+        writer.writerows([(*row, *extras) for row in block])
+        yield buffer.getvalue()
 
 
 @router.get("/api/v1/iv-surface/runs/{run_id}/export.csv")
 async def iv_export(request: Request, run_id: uuid.UUID):
     run = await _checked_run(request, run_id)
-    points = await get_points(str(run_id), 200000)
-    config = json.loads(run["config_json"])
-    rows = [{
-        **point, "run_interval_seconds": run["interval_seconds"], "run_config_json": json.dumps(config, sort_keys=True),
-        "pricing_convention_version": run["pricing_convention_version"], "model_version": run["model_version"],
-    } for point in points]
-    fields = list(rows[0]) if rows else ["run_interval_seconds", "run_config_json", "pricing_convention_version", "model_version"]
-    return _csv_response(f"iv-surface-{run_id}-{run['interval_seconds']}s.csv", fields, rows)
+    interval = run["interval_seconds"]
+    return StreamingResponse(
+        _csv_stream(str(run_id), run),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="iv-surface-{run_id}-{interval}s.csv"'},
+    )

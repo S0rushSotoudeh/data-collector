@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
+from time import perf_counter
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -25,6 +27,11 @@ from src.services.operation_runs import get_run, run_to_dict, update_progress, u
 from src.services.operation_runs import RunProgressReporter
 
 TEHRAN = ZoneInfo("Asia/Tehran")
+logger = logging.getLogger(__name__)
+
+POINT_INSERT_BATCH_ROWS = 50_000
+FIT_INSERT_BATCH_ROWS = 5_000
+QUALITY_CHECK_GRID = tuple(i / 100 for i in range(-100, 101))
 
 
 def _run_row(client, run_id: str) -> dict[str, Any]:
@@ -119,6 +126,15 @@ def _rate(curves: list[tuple], snapshot: datetime, ttm: float, manual: float | N
     return None, "missing"
 
 
+def _rate_for_curve(curve: tuple | None, ttm: float, manual: float | None) -> tuple[float | None, str]:
+    """Price one maturity from the curve already aligned to a snapshot."""
+    if curve and bool(curve[7]) and int(curve[6]) >= 4 and all(value is not None for value in curve[1:5]):
+        return float(ns_yield(ttm, *map(float, curve[1:5]))), "bond_curve"
+    if manual is not None:
+        return manual, "manual_fallback"
+    return None, "missing"
+
+
 def _quote(raw: tuple | None, snapshot: datetime, max_age: int) -> dict[str, Any] | None:
     if raw is None:
         return None
@@ -136,7 +152,14 @@ def _price_factor(convention: OptionPricingConvention) -> float:
     return 10.0 if unit in {"toman", "tomans"} else 1.0
 
 
-def process_run(run_id: str) -> dict[str, int]:
+def process_run(run_id: str) -> dict[str, Any]:
+    started_at = perf_counter()
+    timings = {
+        "input_query_seconds": 0.0,
+        "state_alignment_seconds": 0.0,
+        "analytics_seconds": 0.0,
+        "insert_seconds": 0.0,
+    }
     client = get_client()
     stored = _run_row(client, run_id)
     if stored["model_version"] != MODEL_VERSION:
@@ -148,39 +171,77 @@ def process_run(run_id: str) -> dict[str, int]:
     progress = RunProgressReporter(run_id)
     progress.set_total(total_snapshots)
     codes = [item.instrument_code for item in instruments]
-    metadata = {item.instrument_code: item for item in instruments}
+    ordered_instruments = [
+        (
+            item.instrument_code,
+            item.expiry_date,
+            float(item.strike_price),
+            "call" if (item.option_type or "").lower() in {"call", "c"} else "put",
+        )
+        for item in instruments
+    ]
+    expiries = sorted({expiry for _, expiry, _, _ in ordered_instruments})
+    expiry_at = {expiry: datetime.combine(expiry, config.session_end, TEHRAN) for expiry in expiries}
     pairs: dict[tuple[date, float], dict[str, str]] = defaultdict(dict)
     for item in instruments:
         side = "call" if (item.option_type or "").lower() in {"call", "c"} else "put"
         pairs[(item.expiry_date, float(item.strike_price))][side] = item.instrument_code
+    pairs_by_expiry: dict[date, list[tuple[float, dict[str, str]]]] = defaultdict(list)
+    for (expiry, strike), pair in pairs.items():
+        if set(pair) == {"call", "put"}:
+            pairs_by_expiry[expiry].append((strike, pair))
     counts = {"completed_snapshot_count": 0, "point_count": 0, "fit_count": 0, "warning_count": 0}
     price_factor = _price_factor(convention)
     day = config.start_date
     while day <= config.end_date:
+        input_started_at = perf_counter()
         snapshots = aligned_snapshots(day, config.session_start, config.session_end, config.interval_seconds)
         grouped = _quotes(client, codes, day, config.session_end)
-        states = {code: latest_state_rows(grouped.get(code, []), snapshots) for code in codes}
         curves = _curve_rows(client, day, config.session_end)
+        timings["input_query_seconds"] += perf_counter() - input_started_at
+
+        alignment_started_at = perf_counter()
+        states = {code: latest_state_rows(grouped.get(code, []), snapshots) for code in codes}
+        curve_states = latest_state_rows(curves, snapshots)
+        timings["state_alignment_seconds"] += perf_counter() - alignment_started_at
         points_batch: list[dict[str, Any]] = []
         fits_batch: list[dict[str, Any]] = []
         pending_fit_count = 0
+
+        def flush_batches() -> None:
+            nonlocal pending_fit_count
+            if not points_batch and not fits_batch:
+                return
+            insert_started_at = perf_counter()
+            insert_points(points_batch, client)
+            insert_fits(fits_batch, client)
+            timings["insert_seconds"] += perf_counter() - insert_started_at
+            counts["point_count"] += len(points_batch)
+            counts["fit_count"] += pending_fit_count
+            points_batch.clear()
+            fits_batch.clear()
+            pending_fit_count = 0
+
         for snapshot_index, snapshot in enumerate(snapshots):
+            analytics_started_at = perf_counter()
             snapshot_quotes = {
                 code: _quote(states[code][snapshot_index], snapshot, config.max_quote_age_seconds) for code in codes
             }
             expiry_forwards: dict[date, tuple[float, float, float, float, str]] = {}
-            for expiry in sorted({item.expiry_date for item in instruments}):
-                expiry_at = datetime.combine(expiry, config.session_end, TEHRAN)
-                ttm = (expiry_at - snapshot).total_seconds() / (365.25 * 86400)
+            expiry_ttm: dict[date, tuple[float, float]] = {}
+            curve = curve_states[snapshot_index]
+            for expiry in expiries:
+                raw_ttm = (expiry_at[expiry] - snapshot).total_seconds() / (365.25 * 86400)
+                point_ttm = max(0.0, raw_ttm)
+                expiry_ttm[expiry] = (raw_ttm, point_ttm)
+                ttm = raw_ttm
                 if ttm <= 0:
                     continue
-                rate, rate_source = _rate(curves, snapshot, ttm, config.manual_funding_rate)
+                rate, rate_source = _rate_for_curve(curve, ttm, config.manual_funding_rate)
                 if rate is None:
                     continue
                 intervals = []
-                for (pair_expiry, strike), pair in pairs.items():
-                    if pair_expiry != expiry or set(pair) != {"call", "put"}:
-                        continue
+                for strike, pair in pairs_by_expiry.get(expiry, []):
                     call, put = snapshot_quotes[pair["call"]], snapshot_quotes[pair["put"]]
                     if not call or not put or call["rejection"] or put["rejection"]:
                         continue
@@ -197,14 +258,10 @@ def process_run(run_id: str) -> dict[str, int]:
 
             valid_by_fit: dict[tuple[date, str], list[dict[str, Any]]] = defaultdict(list)
             now = datetime.now(TEHRAN)
-            for code, item in metadata.items():
+            for code, expiry, strike, option_type in ordered_instruments:
                 quote = snapshot_quotes[code]
-                expiry = item.expiry_date
-                strike = float(item.strike_price)
-                option_type = "call" if (item.option_type or "").lower() in {"call", "c"} else "put"
                 forward_info = expiry_forwards.get(expiry)
-                expiry_at = datetime.combine(expiry, config.session_end, TEHRAN)
-                point_ttm = max(0.0, (expiry_at - snapshot).total_seconds() / (365.25 * 86400))
+                ttm, point_ttm = expiry_ttm[expiry]
                 for side, raw_index, depth_index in (("bid", 1, 3), ("ask", 2, 4)):
                     rejection = "" if quote else "missing_quote"
                     if quote and quote["rejection"]:
@@ -225,8 +282,6 @@ def process_run(run_id: str) -> dict[str, int]:
                         row["rejection_reason"] = "missing_forward_or_rate"
                     elif not rejection:
                         lo, hi, forward, rate, rate_source = forward_info
-                        expiry_at = datetime.combine(expiry, config.session_end, TEHRAN)
-                        ttm = (expiry_at - snapshot).total_seconds() / (365.25 * 86400)
                         row.update(ttm_years=ttm, forward_lower=lo, forward_upper=hi, forward=forward, rate=rate, rate_source=rate_source)
                         # Use the OTM contract at each strike to avoid duplicate call/put observations.
                         if (strike < forward and option_type != "put") or (strike >= forward and option_type != "call"):
@@ -270,12 +325,14 @@ def process_run(run_id: str) -> dict[str, int]:
                     from src.analytics.iv import WingParameters
                     bp = WingParameters(**{name: bid[name] for name in ("vc", "sc", "pc", "cc", "dc", "uc")})
                     ap = WingParameters(**{name: ask[name] for name in ("vc", "sc", "pc", "cc", "dc", "uc")})
-                    xs = [i / 100 for i in range(-100, 101)]
-                    if any(orc_wing(x, bp) > orc_wing(x, ap) for x in xs):
+                    if any(orc_wing(x, bp) > orc_wing(x, ap) for x in QUALITY_CHECK_GRID):
                         bid["quality_flags"].append("fitted_bid_above_ask")
                         ask["quality_flags"].append("fitted_bid_above_ask")
                         counts["warning_count"] += 1
             counts["completed_snapshot_count"] += 1
+            timings["analytics_seconds"] += perf_counter() - analytics_started_at
+            if len(points_batch) >= POINT_INSERT_BATCH_ROWS or len(fits_batch) >= FIT_INSERT_BATCH_ROWS:
+                flush_batches()
             progress.checkpoint(
                 counts["completed_snapshot_count"],
                 total=total_snapshots,
@@ -288,14 +345,14 @@ def process_run(run_id: str) -> dict[str, int]:
                     "warning_count": counts["warning_count"],
                 },
             )
-        insert_points(points_batch, client)
-        insert_fits(fits_batch, client)
-        counts["point_count"] += len(points_batch)
-        counts["fit_count"] += pending_fit_count
+        flush_batches()
         stored = _update_run(client, stored, "running", persist_progress=False, **counts)
         day += timedelta(days=1)
     _update_run(client, stored, "completed", quality_summary=json.dumps(counts), error="", **counts)
-    return counts
+    timings["total_seconds"] = perf_counter() - started_at
+    result = {**counts, "timings": {key: round(value, 6) for key, value in timings.items()}}
+    logger.info("IV surface run %s completed: %s", run_id, result)
+    return result
 
 
 def fail_run(run_id: str, error: str) -> None:
