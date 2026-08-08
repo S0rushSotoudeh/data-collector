@@ -8,3 +8,5 @@ cookies*.txt
 *.json
 *.sig
 graphify-out/
+.codex-slide-redesign/
+.codex-slide-review/

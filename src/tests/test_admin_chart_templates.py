@@ -55,10 +55,23 @@ def test_parity_charts_are_full_width_and_use_shared_support():
         assert text in source
 
 
+def test_iv_page_uses_snapshot_and_history_data_instead_of_bulk_run_data() -> None:
+    source = Path("src/admin/templates/option/iv_surface.html").read_text()
+
+    assert "/timeline" in source
+    assert "/snapshot?snapshot_time=" in source
+    assert "/history?expiry_date=" in source
+    assert "/points" not in source
+    assert "/fits" not in source
+    assert "/grid" not in source
+    assert "AbortController" in source
+    assert "prefetchAround" in source
+    assert 'id="expiry"' in source
+
+
 def test_iv_forward_chart_separates_price_and_percentage_axes() -> None:
     source = Path("src/admin/templates/option/iv_surface.html").read_text()
 
-    assert "new Map(fpRows.map(x=>[x.snapshot_time,x]))" in source
     assert "name:'Forward price'" in source
     assert "name:'Funding rate',position:'right'" in source
     assert "rateValue=value=>`${(Number(value)*100).toFixed(2)}%`" in source

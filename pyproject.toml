@@ -34,3 +34,8 @@ cache_dir = "/tmp/pytest_cache"
 filterwarnings = [
     "ignore::DeprecationWarning:importlib",
 ]
+
+[dependency-groups]
+dev = [
+    "graphifyy==0.9.19",
+]
