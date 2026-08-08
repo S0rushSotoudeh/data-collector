@@ -22,6 +22,12 @@ def test_every_application_task_has_an_operation_spec() -> None:
     assert set(TASK_SPECS) == registered
 
 
+def test_application_imports_all_registered_routes() -> None:
+    from src.main import app
+
+    assert app.title == "Data Collector API"
+
+
 def test_family_pages_share_one_run_view_contract() -> None:
     views = (
         CollectionRunsView,

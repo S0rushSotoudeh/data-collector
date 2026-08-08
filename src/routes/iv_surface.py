@@ -197,6 +197,19 @@ async def iv_grid(request: Request, run_id: uuid.UUID, steps: int = Query(41, ge
     return {"items": items}
 
 
+def _csv_response(filename: str, fields: list[str], rows: list[dict[str, Any]]) -> StreamingResponse:
+    """Compatibility helper shared by the smaller analytics exports."""
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    writer.writerows(rows)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _csv_stream(run_id: str, run: dict[str, Any]):
     config = json.loads(run["config_json"])
     extras = (
