@@ -178,6 +178,31 @@ services:
         condition: service_healthy
     restart: "${RESTART_POLICY}"
 
+  qa:
+    build:
+      <<: *app-build
+      target: qa
+    user: "${UID}:${GID}"
+    working_dir: /app
+    environment:
+      E2E_BASE_URL: "${E2E_BASE_URL:-https://data.nita.info}"
+      E2E_USERNAME: "${E2E_USERNAME:-}"
+      E2E_PASSWORD: "${E2E_PASSWORD:-}"
+      E2E_ARTIFACT_DIR: /app/qa/artifacts
+      E2E_ENABLE_STATEFUL: "${E2E_ENABLE_STATEFUL:-}"
+      E2E_STAGE_TRADE_DATE: "${E2E_STAGE_TRADE_DATE:-2026-08-11}"
+      E2E_PARITY_RUN_ID: "${E2E_PARITY_RUN_ID:-fd8a8204-e7a3-4a89-9770-3b7f05087bc9}"
+      E2E_BOX_RUN_ID: "${E2E_BOX_RUN_ID:-77b8c867-f1e6-4d88-9001-b0c0dd1b606f}"
+      E2E_IV_RUN_ID: "${E2E_IV_RUN_ID:-7e2253eb-716a-4076-9fc6-1e71e8fb732c}"
+      E2E_MISPRICING_RUN_ID: "${E2E_MISPRICING_RUN_ID:-646492eb-0410-4a4a-83cb-fd07b624cb73}"
+      QA_MAX_FAILURE_RATIO: "${QA_MAX_FAILURE_RATIO:-0.01}"
+      QA_MAX_P95_MS: "${QA_MAX_P95_MS:-10000}"
+    volumes:
+      - ./qa:/app/qa
+    entrypoint: ["uv", "run"]
+    command: ["pytest"]
+    profiles: ["qa"]
+
 volumes:
   postgres_data:
   clickhouse_data:

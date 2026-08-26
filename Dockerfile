@@ -24,7 +24,7 @@ RUN apt-get update && apt-get upgrade -y --no-install-recommends \
     libxslt1-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
+COPY pyproject.toml uv.lock ./
 
 RUN pip install --upgrade "${PIP_PACKAGE}" --no-cache-dir && \
     pip install "${UV_PACKAGE}" --no-cache-dir && \
@@ -46,3 +46,12 @@ USER ${APP_USER}
 EXPOSE ${APP_PORT}
 
 ENTRYPOINT ["/app/entrypoint.sh"]
+
+FROM development AS qa
+
+USER root
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN uv sync --all-extras --group qa \
+    && uv run playwright install --with-deps chromium
+
+USER ${APP_USER}

@@ -13,6 +13,36 @@
 </div>
 
 <div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Sync IME Producers</h3></div>
+  <div class="card-body">
+    <p>Refresh the Iran Mercantile Exchange producer directory while preserving enabled selections.</p>
+    <form method="post" action="{{ request.url.path }}">
+      <input type="hidden" name="action" value="sync-ime-producers">
+      <button type="submit" class="btn btn-primary">Sync IME Producers</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill IME Physical Trades</h3></div>
+  <div class="card-body">
+    <p>Fetch physical-market price and volume rows for one enabled producer.</p>
+    <form method="post" action="{{ request.url.path }}" id="ime-backfill-form">
+      <input type="hidden" name="action" value="backfill-ime-physical-trades">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-4"><label class="form-label">Producer</label><select class="form-select" name="producer_code" required>
+          {% for producer in ime_producers %}<option value="{{ producer.producer_code }}">{{ producer.name }} ({{ producer.producer_code }})</option>{% else %}<option value="">No enabled producers</option>{% endfor %}
+        </select></div>
+        <div class="col-md-2"><label class="form-label">Start date</label><input type="date" class="form-control ime-date" name="start_date"></div>
+        <div class="col-md-2"><label class="form-label">End date</label><input type="date" class="form-control ime-date" name="end_date"></div>
+        <div class="col-md-2"><label class="form-check"><input class="form-check-input" type="checkbox" name="all_history" id="ime-all-history"><span class="form-check-label">All history</span></label></div>
+        <div class="col-md-2"><button type="submit" class="btn btn-warning w-100" {% if not ime_producers %}disabled{% endif %}>Backfill IME</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Sync Bond Instruments</h3></div>
   <div class="card-body">
     <p>Fetch bond instrument metadata from TSETMC and upsert into PostgreSQL.</p>
@@ -204,3 +234,6 @@
 </div>
 
 {% endblock %}
+{% block custom_js %}<script>
+(function(){var box=document.getElementById('ime-all-history');if(!box)return;var inputs=document.querySelectorAll('.ime-date');function toggle(){inputs.forEach(function(i){i.disabled=box.checked;i.required=!box.checked;});}box.addEventListener('change',toggle);toggle();})();
+</script>{% endblock %}

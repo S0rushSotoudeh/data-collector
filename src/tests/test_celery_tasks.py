@@ -25,9 +25,12 @@ def test_all_tasks_registered() -> None:
             "src.tasks.run_box_spread_analysis",
             "src.tasks.run_iv_surface",
             "src.tasks.run_option_mispricing",
-            "src.tasks.fetch_yesterday_stock_orderbook",
-            "src.tasks.fetch_yesterday_stock_trades",
-            "src.tasks.compute_option_market_potential_daily",
+        "src.tasks.fetch_yesterday_stock_orderbook",
+        "src.tasks.fetch_yesterday_stock_trades",
+        "src.tasks.compute_option_market_potential_daily",
+        "src.tasks.sync_ime_producers",
+        "src.tasks.backfill_ime_physical_trades",
+        "src.tasks.fetch_recent_ime_physical_trades",
         }
     registered = set(task_names)
     assert registered == expected, (

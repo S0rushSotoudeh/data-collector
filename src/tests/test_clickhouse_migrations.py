@@ -86,8 +86,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 16
-        assert applied == list(range(1, 17))
+        assert len(new_versions) == 18
+        assert applied == list(range(1, 19))
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -104,12 +104,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == list(range(3, 17))
-        assert applied == list(range(3, 17))
+        assert new_versions == list(range(3, 19))
+        assert applied == list(range(3, 19))
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 17)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 19)]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -122,7 +122,7 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 16
+        assert len(new_versions) == 18
 
     def test_parity_ytm_migration_is_additive_and_reversible(self) -> None:
         migration = importlib.import_module(
@@ -145,6 +145,28 @@ class TestUpgrade:
             "DROP COLUMN IF EXISTS" in call.args[0]
             for call in client.command.call_args_list
         )
+
+    def test_ime_source_identity_migration_is_reversible(self) -> None:
+        migration = importlib.import_module(
+            "src.db.clickhouse.migrations.versions.018_add_ime_source_trade_identity"
+        )
+        client = MagicMock()
+        client.query.return_value.result_rows = [(migration.OLD_ORDER_BY,)]
+
+        migration.upgrade(client)
+        upgrade_commands = [call.args[0] for call in client.command.call_args_list]
+        assert any("offer_id, contract_type, source_trade_pk" in sql for sql in upgrade_commands)
+        assert any("INSERT INTO" in sql for sql in upgrade_commands)
+        assert any("EXCHANGE TABLES" in sql for sql in upgrade_commands)
+
+        client.query.return_value.result_rows = [(migration.NEW_ORDER_BY,)]
+        migration.downgrade(client)
+        downgrade_commands = [call.args[0] for call in client.command.call_args_list]
+        old_table_ddl = next(
+            sql for sql in downgrade_commands
+            if "CREATE TABLE" in sql and "offer_id, contract_type)" in sql
+        )
+        assert "source_trade_pk)" not in old_table_ddl
 
 
 class TestDowngrade:
@@ -218,7 +240,7 @@ class TestPending:
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 17)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 19)]
 
         p = pending(client)
         assert p == []
@@ -227,7 +249,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 17)]
+        client.query.return_value.result_rows = [(version,) for version in range(1, 19)]
 
         assert check(client) is True
 

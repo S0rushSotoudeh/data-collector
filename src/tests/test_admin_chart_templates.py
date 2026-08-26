@@ -14,6 +14,7 @@ CHART_TEMPLATES = [
     "bonds/yield_spread_chart.html",
     "bonds/bond_trades_values.html",
     "bonds/bond_trades_ranking.html",
+    "ime/price_volume.html",
 ]
 
 
@@ -85,6 +86,28 @@ def test_iv_raw_point_tooltip_keeps_only_compact_hover_data() -> None:
     assert "x.iv,x.option_type,x.strike" in source
     for label in ("Type:", "Strike:", "IV:", "log(K/F):"):
         assert label in source
+
+
+def test_ime_chart_preserves_contract_rows_and_uses_shared_support() -> None:
+    source = Path("src/admin/templates/ime/price_volume.html").read_text()
+
+    assert '{% include "shared/echarts_support.html" %}' in source
+    assert "AdminCharts.init" in source
+    assert "AdminCharts.dualAxisZoom(" in source
+    assert "p.jalali_date+'|'+p.offer_id+'|'+p.source_trade_pk" in source
+    assert "p.contract_type===contract" in source
+    assert "m.contract_type" in source
+    assert "m.offer_id" in source
+    assert "m.price_toman" in source
+    assert "m.quantity" in source
+
+
+def test_ime_chart_uses_logarithmic_price_axis() -> None:
+    source = Path("src/admin/templates/ime/price_volume.html").read_text()
+
+    assert "type:'log',logBase:10,name:'Price (toman, log)'" in source
+    assert "function volumeAxisMax(v){return v.max>0?v.max/.3:1}" in source
+    assert "type:'value',name:'Volume',position:'right',max:volumeAxisMax" in source
 
 
 @pytest.mark.parametrize("template_name", CHART_TEMPLATES[1:])

@@ -16,6 +16,7 @@ from src.routes.iv_surface import router as iv_surface_router
 from src.routes.market_potential import router as market_potential_router
 from src.routes.box_spread import router as box_spread_router
 from src.routes.option_mispricing import router as option_mispricing_router
+from src.routes.ime import router as ime_router
 
 _SECRET_KEY = env("SECRET_KEY")
 
@@ -41,6 +42,7 @@ app.include_router(iv_surface_router, prefix="")
 app.include_router(market_potential_router, prefix="")
 app.include_router(box_spread_router, prefix="")
 app.include_router(option_mispricing_router, prefix="")
+app.include_router(ime_router, prefix="")
 
 
 @app.get("/admin/data-collection-run/list", include_in_schema=False)

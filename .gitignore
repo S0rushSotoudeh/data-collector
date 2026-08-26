@@ -10,3 +10,4 @@ cookies*.txt
 graphify-out/
 .codex-slide-redesign/
 .codex-slide-review/
+qa/artifacts/
