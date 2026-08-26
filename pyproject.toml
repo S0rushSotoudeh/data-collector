@@ -31,6 +31,10 @@ all = ["scipy>=1.15", "flower>=2.0"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 cache_dir = "/tmp/pytest_cache"
+markers = [
+    "live_data: checks that require populated stage data",
+    "stateful: opt-in checks that queue a new stage analysis run",
+]
 filterwarnings = [
     "ignore::DeprecationWarning:importlib",
 ]
@@ -38,4 +42,8 @@ filterwarnings = [
 [dependency-groups]
 dev = [
     "graphifyy==0.9.19",
+]
+qa = [
+    "locust>=2.37",
+    "pytest-playwright>=0.7",
 ]

@@ -72,6 +72,11 @@ class OperationRunsView(BaseView):
             elif self.family == "option_mispricing":
                 row["detail_url"] = f"/admin/options-mispricing?run_id={item.run_id}"
                 row["detail_label"] = "Ranking"
+            elif self.family == "collection" and item.target == "ime_physical_trades":
+                producer_code = (item.config or {}).get("producer_code")
+                suffix = f"?producer_code={producer_code}" if producer_code else ""
+                row["detail_url"] = f"/admin/ime-price-volume{suffix}"
+                row["detail_label"] = "Chart"
             rows.append(row)
         total_pages = max(1, ceil(total / _PAGE_SIZE))
         ctx = {

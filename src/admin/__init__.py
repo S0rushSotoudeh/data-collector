@@ -23,6 +23,7 @@ from src.admin.run_views import (
 )
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.task_views import CeleryTasksView
+from src.admin.ime.views import ImeProducerAdmin, ImeProductAdmin, ImeTradesView, ImePriceVolumeView
 from src.admin.bonds.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
 from src.db.session import engine
 
@@ -69,6 +70,10 @@ def create_admin(
     admin.add_view(YieldSpreadChartView)
     admin.add_view(BondTradesValuesChartView)
     admin.add_view(BondTradesRankingChartView)
+    admin.add_view(ImeProducerAdmin)
+    admin.add_view(ImeProductAdmin)
+    admin.add_view(ImeTradesView)
+    admin.add_view(ImePriceVolumeView)
     admin.add_view(CeleryTasksView)
     admin.add_view(CollectionRunsView)
     admin.add_view(YieldCurveRunsView)

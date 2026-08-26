@@ -19,7 +19,10 @@ from src.tasks import (
     sync_bond_instruments,
     sync_option_instruments,
     sync_stock_instruments,
+    sync_ime_producers,
+    backfill_ime_physical_trades,
 )
+from src.collectors.ime.service import ALL_HISTORY_START, enabled_producer_codes
 
 router = APIRouter(prefix="/admin/tasks", tags=["admin-tasks"])
 
@@ -56,6 +59,21 @@ class BackfillRequest(BaseModel):
             raise ValueError("start_date must not be after end_date")
         if (self.end_date - self.start_date).days > 731:
             raise ValueError("backfill is limited to 24 months")
+
+
+class ImeBackfillRequest(BaseModel):
+    producer_code: int = Field(..., gt=0)
+    start_date: date | None = None
+    end_date: date | None = None
+    all_history: bool = False
+
+    def model_post_init(self, __context) -> None:
+        effective_start = ALL_HISTORY_START if self.all_history else self.start_date
+        effective_end = self.end_date or (date.today() if self.all_history else None)
+        if effective_start is None or effective_end is None:
+            raise ValueError("start_date and end_date are required unless all_history is true")
+        if effective_start > effective_end:
+            raise ValueError("start_date must not be after end_date")
 
 
 def _submitted(task, request: Request, *, body: BackfillRequest | None = None) -> TaskSubmittedResponse:
@@ -108,6 +126,42 @@ async def api_sync_option_instruments(request: Request):
 async def api_sync_stock_instruments(request: Request):
     await _require_admin(request)
     return _submitted(sync_stock_instruments, request)
+
+
+@router.post("/sync-ime-producers", response_model=TaskSubmittedResponse)
+async def api_sync_ime_producers(request: Request):
+    await _require_admin(request)
+    return _submitted(sync_ime_producers, request)
+
+
+@router.post("/backfill-ime-physical-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_ime_physical_trades(request: Request, body: ImeBackfillRequest):
+    await _require_admin(request)
+    if body.producer_code not in set(enabled_producer_codes()):
+        raise HTTPException(status_code=422, detail="producer must be enabled")
+    start = ALL_HISTORY_START if body.all_history else body.start_date
+    end = body.end_date or date.today()
+    assert start is not None
+    kwargs = {
+        "producer_code": body.producer_code,
+        "start_date_str": start.isoformat(),
+        "end_date_str": end.isoformat(),
+        "all_history": body.all_history,
+    }
+    row, async_result = enqueue_task(
+        backfill_ime_physical_trades,
+        kwargs=kwargs,
+        trigger="manual",
+        created_by=request.session.get("user") or "admin",
+        start_date=start,
+        end_date=end,
+    )
+    return TaskSubmittedResponse(
+        task_id=async_result.id,
+        status="queued",
+        run_id=str(row.run_id),
+        collection_run_id=str(row.run_id),
+    )
 
 
 @router.post("/backfill-stock-order-books", response_model=TaskSubmittedResponse)

@@ -1,4 +1,5 @@
 from celery import Celery
+import os
 from celery.signals import before_task_publish, task_failure, task_postrun, task_prerun
 from celery.schedules import crontab
 
@@ -81,6 +82,12 @@ celery.conf.beat_schedule = {
         "task": "src.tasks.fetch_yesterday_stock_trades",
         "schedule": crontab(
             hour=beat_hour, minute=env_int("BEAT_STOCK_TRADES_MINUTE")
+        ),
+    },
+    "fetch-recent-ime-physical-trades": {
+        "task": "src.tasks.fetch_recent_ime_physical_trades",
+        "schedule": crontab(
+            hour=beat_hour, minute=int(os.environ.get("BEAT_IME_TRADES_MINUTE", "40"))
         ),
     },
     "compute-yesterday-option-market-potential": {

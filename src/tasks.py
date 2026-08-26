@@ -63,6 +63,12 @@ from src.collectors.option.trade_fetcher import backfill_option_trades
 from src.collectors.stock.instrument_sync import sync_stock_instruments_to_pg
 from src.collectors.stock.order_book_fetcher import backfill_stock_order_books
 from src.collectors.stock.trade_fetcher import backfill_stock_trades
+from src.collectors.ime.service import (
+    ALL_HISTORY_START,
+    collect_trades as collect_ime_trades,
+    enabled_producer_codes,
+    sync_producers as sync_ime_producers_service,
+)
 
 
 @shared_task(bind=True)
@@ -128,6 +134,43 @@ def sync_option_instruments(self) -> dict:
 @shared_task(bind=True)
 def sync_stock_instruments(self) -> dict:
     return _run_collection(self, lambda progress: sync_stock_instruments_to_pg(progress=progress))
+
+
+@shared_task(bind=True)
+def sync_ime_producers(self) -> dict:
+    return _run_collection(self, lambda progress: sync_ime_producers_service(progress=progress))
+
+
+@shared_task(bind=True)
+def backfill_ime_physical_trades(
+    self,
+    producer_code: int,
+    start_date_str: str,
+    end_date_str: str,
+    all_history: bool = False,
+    collection_run_id: str | None = None,
+) -> dict:
+    start = ALL_HISTORY_START if all_history else date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+    return _run_collection(
+        self,
+        lambda progress: collect_ime_trades([int(producer_code)], start, end, progress=progress),
+        explicit_run_id=collection_run_id,
+    )
+
+
+@shared_task(bind=True)
+def fetch_recent_ime_physical_trades(self) -> dict:
+    from zoneinfo import ZoneInfo
+
+    end = datetime.now(ZoneInfo("Asia/Tehran")).date() - timedelta(days=1)
+    lookback = max(1, int(__import__("os").environ.get("IME_RECENT_LOOKBACK_DAYS", "7")))
+    start = end - timedelta(days=lookback - 1)
+    codes = enabled_producer_codes()
+    return _run_collection(
+        self,
+        lambda progress: collect_ime_trades(codes, start, end, progress=progress),
+    )
 
 
 @shared_task(bind=True)
