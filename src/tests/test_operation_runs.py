@@ -1,5 +1,6 @@
+from datetime import date
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 import uuid
 
 from src.admin._render import _TEMPLATE_ENV
@@ -15,6 +16,7 @@ from src.admin.run_views import (
 from src.celery_app import celery, create_scheduled_operation_run, fail_operation_run
 from src.services.operation_runs import RunProgressReporter, TASK_SPECS, finish_run
 from src.db.clickhouse.iv_surface import get_fits, get_points
+from src.tasks import backfill_yield_curves
 
 
 def test_every_application_task_has_an_operation_spec() -> None:
@@ -138,6 +140,40 @@ def test_progress_reporter_checkpoints_absolute_progress_and_result() -> None:
         assert update.call_args.kwargs["output_count"] == 200
         assert update.call_args.kwargs["warning_count"] == 10
         assert update.call_args.kwargs["result"] == {"fit_count": 100}
+
+
+def test_yield_curve_backfill_reports_each_pending_date() -> None:
+    first = date(2026, 8, 20)
+    second = date(2026, 8, 21)
+    client = AsyncMock()
+    client.query.side_effect = [
+        SimpleNamespace(result_rows=[(first,), (second,)]),
+        SimpleNamespace(result_rows=[]),
+    ]
+    curve_results = [
+        {"date": first.isoformat(), "fits": 4, "bonds": 6},
+        {"date": second.isoformat(), "fits": 0, "error": "No instruments found"},
+    ]
+    run_id = uuid.uuid4()
+
+    with (
+        patch("src.tasks._operation_run_id", return_value=str(run_id)),
+        patch("src.db.clickhouse.get_async_client", return_value=client),
+        patch("src.analytics.engine.compute_curve_for_date", AsyncMock(side_effect=curve_results)),
+        patch("src.services.operation_runs.update_progress") as update,
+    ):
+        result = backfill_yield_curves.run(first.isoformat(), second.isoformat())
+
+    assert [call.kwargs["current"] for call in update.call_args_list] == [0, 1, 2]
+    assert update.call_args.kwargs["total"] == 2
+    assert update.call_args.kwargs["output_count"] == 10
+    assert update.call_args.kwargs["warning_count"] == 1
+    assert result == {
+        "dates_processed": 2,
+        "dates_skipped": 0,
+        "total_rows": 10,
+        "warning_count": 1,
+    }
 
 
 def test_iv_running_update_can_refresh_local_state_without_database_write() -> None:
