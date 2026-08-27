@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, Index, String, Text, func
+from sqlalchemy import (
+    JSON, BigInteger, Boolean, CheckConstraint, Column, DateTime, Index, Numeric,
+    String, Text, UniqueConstraint, func,
+)
 from sqlmodel import Field, SQLModel
 
 
@@ -79,4 +83,43 @@ class OptionPricingConvention(SQLModel, table=True):  # type: ignore[call-arg]
 
     __table_args__ = (
         Index("idx_pricing_convention_effective", "contract_family", "effective_from", "effective_to"),
+    )
+
+
+class OptionFeeSchedule(SQLModel, table=True):  # type: ignore[call-arg]
+    __tablename__ = "option_fee_schedules"
+
+    fee_schedule_id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    market: str = Field(max_length=8, index=True)
+    effective_from: date = Field(index=True)
+    effective_to: date | None = Field(default=None, index=True)
+    buy_rate: Decimal = Field(sa_column=Column(Numeric(12, 8), nullable=False))
+    sell_rate: Decimal = Field(sa_column=Column(Numeric(12, 8), nullable=False))
+    settlement_cost_per_contract: Decimal | None = Field(
+        default=None, sa_column=Column(Numeric(18, 4), nullable=True)
+    )
+    source: str = Field(max_length=500)
+    notes: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
+    created_at: datetime | None = Field(
+        default=None, sa_column=Column(DateTime(timezone=True), server_default=func.now())
+    )
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now()),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("market", "effective_from", name="uq_option_fee_market_effective_from"),
+        CheckConstraint("market IN ('tse', 'ifb')", name="ck_option_fee_market"),
+        CheckConstraint("buy_rate >= 0 AND buy_rate < 1", name="ck_option_fee_buy_rate"),
+        CheckConstraint("sell_rate >= 0 AND sell_rate < 1", name="ck_option_fee_sell_rate"),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to >= effective_from",
+            name="ck_option_fee_effective_range",
+        ),
+        CheckConstraint(
+            "settlement_cost_per_contract IS NULL OR settlement_cost_per_contract >= 0",
+            name="ck_option_fee_settlement_cost",
+        ),
+        Index("idx_option_fee_market_effective", "market", "effective_from", "effective_to"),
     )

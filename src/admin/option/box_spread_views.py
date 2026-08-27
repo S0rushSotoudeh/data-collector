@@ -7,6 +7,24 @@ from starlette.responses import HTMLResponse
 from src.admin._render import _render
 
 
+class BoxCalculatorView(BaseView):
+    name = "Box Calculator"
+    identity = "options-box-calculator"
+    icon = "fa-solid fa-calculator"
+    category = "Options Analytics"
+    category_icon = "fa-solid fa-chart-line"
+
+    @expose("/options-box-calculator", methods=["GET"])
+    async def options_box_calculator(self, request: Request) -> HTMLResponse:
+        ctx: dict[str, Any] = {
+            "request": request, "admin": self._admin_ref,
+            "url_for": lambda name, **kw: request.url_for(name, **kw),
+            "title": "Box Calculator",
+            "subtitle": "One maker, three takers — historical executable economics",
+        }
+        return HTMLResponse(_render("option/box_calculator.html", ctx))
+
+
 class BoxSpreadView(BaseView):
     name = "Box-Spread Mispricing"
     identity = "options-box-spread"

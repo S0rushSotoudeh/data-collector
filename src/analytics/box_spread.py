@@ -181,3 +181,130 @@ def price_box(
                 **maker_economics,
             })
     return rows
+
+
+def calculate_maker_routes(
+    *, books: dict[str, DepthBook | None], direction: Direction, lower_strike: float,
+    upper_strike: float, box_count: int, multiplier: int, buy_fee: float,
+    sell_fee: float, settlement_cost_per_contract: float | None, tick_size: float,
+    snapshot_at: datetime, expiry_at: datetime, market_data_valid: bool,
+    quality_reasons: list[str],
+) -> list[dict[str, Any]]:
+    """Price the four one-maker/three-taker routes with a full cash-flow audit."""
+    if set(books) != set(LEGS) or lower_strike >= upper_strike:
+        raise ValueError("invalid box inputs")
+    if box_count <= 0 or multiplier <= 0 or tick_size <= 0:
+        raise ValueError("invalid box size or convention")
+    leg_actions = actions(direction)
+    width = upper_strike - lower_strike
+    notional_units = multiplier * box_count
+    settlement_total = (settlement_cost_per_contract or 0.0) * box_count
+    terminal_cash_flow = (
+        width * notional_units - settlement_total
+        if direction == "long"
+        else -width * notional_units - settlement_total
+    )
+    days_to_expiry = max(0.0, (expiry_at - snapshot_at).total_seconds() / 86400)
+    routes: list[dict[str, Any]] = []
+    for maker_leg in LEGS:
+        maker_side = leg_actions[maker_leg]
+        taker_legs = [leg for leg in LEGS if leg != maker_leg]
+        hedge_capacity = min(
+            books[leg].total_volume(leg_actions[leg]) if books[leg] is not None else 0
+            for leg in taker_legs
+        )
+        leg_rows: list[dict[str, Any]] = []
+        feasible = True
+        entry_cash_flow = opening_fee = hedge_cash_flow = 0.0
+        maker_price: float | None = None
+        maker_queue = 0
+        for leg in LEGS:
+            book = books[leg]
+            side = leg_actions[leg]
+            role = "maker" if leg == maker_leg else "taker"
+            slices: list[tuple[int, float, int]] | None
+            if book is None:
+                price = None
+                slices = None
+            elif role == "maker":
+                price = book.price("sell" if side == "buy" else "buy")
+                slices = [] if price is not None and price > 0 else None
+                maker_price = price
+                maker_queue = book.queue_volume(side)
+            else:
+                slices = book.fills(side, box_count)
+                price = (
+                    sum(slice_price * quantity for _, slice_price, quantity in slices) / box_count
+                    if slices is not None else None
+                )
+            if price is None or price <= 0 or slices is None:
+                feasible = False
+                gross = fee = cash_flow = None
+            else:
+                gross = price * notional_units
+                fee_rate = buy_fee if side == "buy" else sell_fee
+                fee = gross * fee_rate
+                cash_flow = -gross - fee if side == "buy" else gross - fee
+                entry_cash_flow += cash_flow
+                opening_fee += fee
+                if role == "taker":
+                    hedge_cash_flow += cash_flow
+            leg_rows.append({
+                "leg": leg, "role": role, "side": side, "price": price,
+                "quantity": box_count,
+                "available_quantity": None if role == "maker" or book is None else book.total_volume(side),
+                "gross_premium": gross,
+                "fee_rate": buy_fee if side == "buy" else sell_fee,
+                "fee": fee, "signed_cash_flow": cash_flow,
+                "slices": [] if role == "maker" else [
+                    {"level": level, "price": price_value, "quantity": quantity}
+                    for level, price_value, quantity in (slices or [])
+                ],
+            })
+        expiry_profit = entry_cash_flow + terminal_cash_flow if feasible else None
+        entry_debit = -entry_cash_flow if feasible and direction == "long" else None
+        entry_credit = entry_cash_flow if feasible and direction == "short" else None
+        monthly_value = None
+        if feasible and days_to_expiry > 0:
+            if direction == "long" and entry_debit is not None and entry_debit > 0 and terminal_cash_flow > 0:
+                monthly_value = (terminal_cash_flow / entry_debit) ** (30 / days_to_expiry) - 1
+            elif direction == "short" and entry_credit is not None and entry_credit > 0:
+                liability = -terminal_cash_flow
+                if liability > 0:
+                    monthly_value = 1 - (liability / entry_credit) ** (30 / days_to_expiry)
+        break_even = None
+        if feasible:
+            fee_rate = buy_fee if maker_side == "buy" else sell_fee
+            if maker_side == "buy":
+                boundary = (hedge_cash_flow + terminal_cash_flow) / (notional_units * (1 + fee_rate))
+                break_even = round_to_tick(boundary, tick_size, "floor")
+            else:
+                boundary = -(hedge_cash_flow + terminal_cash_flow) / (notional_units * (1 - fee_rate))
+                break_even = round_to_tick(boundary, tick_size, "ceil")
+        routes.append({
+            "maker_leg": maker_leg, "maker_side": maker_side,
+            "maker_price": maker_price, "maker_queue_ahead": maker_queue,
+            "hedge_capacity_boxes": hedge_capacity, "feasible": feasible,
+            "execution_grade": bool(feasible and market_data_valid),
+            "entry_cash_flow": entry_cash_flow if feasible else None,
+            "entry_debit": entry_debit, "entry_credit": entry_credit,
+            "opening_fee": opening_fee if feasible else None,
+            "terminal_cash_flow": terminal_cash_flow if feasible else None,
+            "settlement_cost": settlement_total if settlement_cost_per_contract is not None else None,
+            "expiry_profit": expiry_profit,
+            "profit_label": "net_profit" if settlement_cost_per_contract is not None else "pre_settlement_profit",
+            "days_to_expiry": days_to_expiry,
+            "monthly_metric": "monthly_equivalent_rate",
+            "monthly_value": monthly_value,
+            "break_even_maker_price": break_even,
+            "quality_reasons": list(quality_reasons), "legs": leg_rows,
+        })
+    routes.sort(key=lambda row: (
+        0 if row["execution_grade"] else 1,
+        0 if row["feasible"] else 1,
+        -(row["expiry_profit"] if row["expiry_profit"] is not None else float("-inf")),
+        row["maker_leg"],
+    ))
+    for rank, route in enumerate(routes, 1):
+        route["rank"] = rank
+    return routes

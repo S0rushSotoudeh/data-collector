@@ -48,3 +48,24 @@ class BoxSpreadRunConfig(BaseModel):
             preset["buy"] if self.option_buy_fee is None else self.option_buy_fee,
             preset["sell"] if self.option_sell_fee is None else self.option_sell_fee,
         )
+
+
+class BoxCalculatorRequest(BaseModel):
+    trade_date: date
+    snapshot_time: time
+    underlying_instrument_code: str = Field(..., min_length=1, max_length=20)
+    expiry_date: date
+    lower_strike: float = Field(..., gt=0)
+    upper_strike: float = Field(..., gt=0)
+    direction: Literal["long", "short"]
+    box_count: int = Field(1, ge=1, le=1_000_000)
+    max_quote_age_seconds: int = Field(60, ge=0, le=86_400)
+    max_cross_leg_skew_seconds: int = Field(2, ge=0, le=86_400)
+
+    @model_validator(mode="after")
+    def validate_calculation(self):
+        if self.lower_strike >= self.upper_strike:
+            raise ValueError("lower_strike must be below upper_strike")
+        if self.trade_date > self.expiry_date:
+            raise ValueError("trade_date must not be after expiry_date")
+        return self
