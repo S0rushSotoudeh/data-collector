@@ -7,8 +7,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from src.analytics.box_spread import BOX_CALCULATION_VERSION, price_box
-from src.analytics.box_spread_config import BoxSpreadRunConfig
+from src.analytics.box_spread import BOX_CALCULATION_VERSION, calculate_maker_routes, price_box
+from src.analytics.box_spread_config import BoxCalculatorRequest, BoxSpreadRunConfig
 from src.analytics.box_spread_engine import _states, process_run
 from src.analytics.depth import DepthBook, DepthLevel
 from src.db.clickhouse.box_spread import PRICING_COLUMNS, SNAPSHOT_COLUMNS
@@ -32,6 +32,7 @@ def test_depth_vwap_and_capacity():
     assert value.vwap("sell", 4) == pytest.approx((2 * 10 + 2 * 9) / 4)
     assert value.vwap("buy", 6) is None
     assert value.total_volume("buy") == 5
+    assert value.fills("buy", 4) == [(1, 11.0, 2), (2, 12.0, 2)]
 
 
 def test_depth_state_carries_levels_forward_and_uses_level_one_time():
@@ -177,5 +178,95 @@ def test_box_migrations_and_templates_are_discoverable():
     versions = _discover_versions()
     assert 14 in versions and 15 in versions
     from src.admin._render import _TEMPLATE_ENV
-    for name in ("option/box_spread.html", "option/box_spread_snapshots_list.html", "option/box_spread_pricings_list.html"):
+    for name in ("option/box_spread.html", "option/box_calculator.html", "option/box_spread_snapshots_list.html", "option/box_spread_pricings_list.html"):
         _TEMPLATE_ENV.get_template(name)
+
+
+def test_box_calculator_request_and_four_ranked_routes():
+    request = BoxCalculatorRequest(
+        trade_date=date(2026, 7, 1), snapshot_time=time(9),
+        underlying_instrument_code="stock", expiry_date=date(2026, 8, 1),
+        lower_strike=100, upper_strike=110, direction="long", box_count=4,
+        max_quote_age_seconds=120, max_cross_leg_skew_seconds=15,
+    )
+    assert request.box_count == 4
+    assert request.max_quote_age_seconds == 120
+    assert request.max_cross_leg_skew_seconds == 15
+    snapshot = datetime(2026, 7, 1, 9, tzinfo=TEHRAN)
+    routes = calculate_maker_routes(
+        books={"c1": book(12, 13, 2, 2, 3), "c2": book(7, 8), "p1": book(2, 3), "p2": book(6, 7)},
+        direction="long", lower_strike=100, upper_strike=110, box_count=4,
+        multiplier=1000, buy_fee=.00103, sell_fee=.00103,
+        settlement_cost_per_contract=None, tick_size=1, snapshot_at=snapshot,
+        expiry_at=datetime(2026, 8, 1, 12, 30, tzinfo=TEHRAN),
+        market_data_valid=True, quality_reasons=[],
+    )
+    assert len(routes) == 4
+    assert [route["rank"] for route in routes] == [1, 2, 3, 4]
+    assert all(route["profit_label"] == "pre_settlement_profit" for route in routes)
+    assert all(route["monthly_metric"] == "monthly_equivalent_rate" for route in routes)
+    c1_taker = next(route for route in routes if route["maker_leg"] != "c1")
+    c1_leg = next(leg for leg in c1_taker["legs"] if leg["leg"] == "c1")
+    assert c1_leg["slices"] == [
+        {"level": 1, "price": 13.0, "quantity": 2},
+        {"level": 2, "price": 14.0, "quantity": 2},
+    ]
+    assert routes[0]["expiry_profit"] is not None
+    assert routes[0]["monthly_value"] is not None
+
+
+def test_box_calculator_short_monthly_return_and_indicative_quality():
+    snapshot = datetime(2026, 7, 1, 9, tzinfo=TEHRAN)
+    routes = calculate_maker_routes(
+        books={"c1": book(12, 13), "c2": book(7, 8), "p1": book(2, 3), "p2": book(6, 7)},
+        direction="short", lower_strike=100, upper_strike=110, box_count=1,
+        multiplier=1000, buy_fee=.00102, sell_fee=.00103,
+        settlement_cost_per_contract=5, tick_size=1, snapshot_at=snapshot,
+        expiry_at=datetime(2026, 8, 1, 12, 30, tzinfo=TEHRAN),
+        market_data_valid=False, quality_reasons=["cross_leg_quote_skew"],
+    )
+    assert all(route["monthly_metric"] == "monthly_equivalent_rate" for route in routes)
+    assert all(
+        (route["monthly_value"] > 0) == (route["expiry_profit"] > 0)
+        for route in routes
+    )
+    assert all(route["profit_label"] == "net_profit" for route in routes)
+    assert all(not route["execution_grade"] for route in routes)
+    assert all(route["quality_reasons"] == ["cross_leg_quote_skew"] for route in routes)
+
+
+def test_box_calculator_route_and_postgres_migration_are_registered():
+    from pathlib import Path
+    from src.routes.box_spread import router
+
+    assert "/api/v1/box-calculator/calculate" in {route.path for route in router.routes}
+    migration = Path("alembic/versions/j0e1f2g3h4i5_option_fee_schedules.py").read_text()
+    assert "option_fee_schedules" in migration
+    assert "0.00103000" in migration and "0.00102000" in migration
+
+
+def test_option_fee_lookup_requires_one_effective_market_schedule():
+    from fastapi import HTTPException
+    from src.routes.box_spread import _fee_market, _fee_schedule_for
+
+    fee = SimpleNamespace(market="tse")
+
+    class Session:
+        def __init__(self, rows):
+            self.rows = rows
+            self.statement = None
+
+        def execute(self, statement):
+            self.statement = statement
+            return SimpleNamespace(scalars=lambda: SimpleNamespace(all=lambda: self.rows))
+
+    stock = SimpleNamespace(market_code=1)
+    session = Session([fee])
+    assert _fee_market(stock) == "tse"
+    assert _fee_market(SimpleNamespace(market_code=2)) == "ifb"
+    assert _fee_schedule_for(session, stock, date(2026, 7, 1)) is fee
+    query = str(session.statement)
+    assert "effective_from" in query and "effective_to IS NULL" in query
+    for rows in ([], [fee, fee]):
+        with pytest.raises(HTTPException, match="exactly one TSE"):
+            _fee_schedule_for(Session(rows), stock, date(2026, 7, 1))

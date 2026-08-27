@@ -1,9 +1,11 @@
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import or_, select
 from sqladmin import ModelView
 
-from src.db.models.operations import OptionPricingConvention
+from src.db.models.operations import OptionFeeSchedule, OptionPricingConvention
+from src.db.session import SessionLocal
 
 
 TEHRAN = ZoneInfo("Asia/Tehran")
@@ -62,3 +64,49 @@ class OptionPricingConventionAdmin(ModelView, model=OptionPricingConvention):
         else:
             data["approved_at"] = None
             data["approver"] = None
+
+
+class OptionFeeScheduleAdmin(ModelView, model=OptionFeeSchedule):
+    name = "Option fee schedule"
+    name_plural = "Option fee schedules"
+    icon = "fa-solid fa-percent"
+    category = "Options Analytics"
+    can_create = True
+    can_edit = True
+    can_delete = False
+    column_list = [
+        OptionFeeSchedule.market, OptionFeeSchedule.effective_from,
+        OptionFeeSchedule.effective_to, OptionFeeSchedule.buy_rate,
+        OptionFeeSchedule.sell_rate, OptionFeeSchedule.settlement_cost_per_contract,
+        OptionFeeSchedule.source,
+    ]
+    form_excluded_columns = [
+        OptionFeeSchedule.fee_schedule_id,
+        OptionFeeSchedule.created_at,
+        OptionFeeSchedule.updated_at,
+    ]
+    form_args = {
+        "market": {"default": "tse"},
+        "effective_from": {"default": date(2026, 6, 16)},
+        "source": {"default": "doc/quant/fees.md"},
+    }
+
+    async def on_model_change(self, data, model, is_created, request) -> None:
+        start = data["effective_from"]
+        end = data.get("effective_to")
+        if end is not None and end < start:
+            raise ValueError("effective_to must not be before effective_from")
+        current_id = getattr(model, "fee_schedule_id", None)
+        with SessionLocal() as session:
+            statement = select(OptionFeeSchedule).where(
+                OptionFeeSchedule.market == data["market"],
+                OptionFeeSchedule.effective_from <= (end or date.max),
+                or_(
+                    OptionFeeSchedule.effective_to.is_(None),
+                    OptionFeeSchedule.effective_to >= start,
+                ),
+            )
+            if current_id is not None:
+                statement = statement.where(OptionFeeSchedule.fee_schedule_id != current_id)
+            if session.execute(statement).scalars().first() is not None:
+                raise ValueError("fee schedule dates overlap an existing row for this market")

@@ -39,27 +39,32 @@ class DepthBook:
     def total_volume(self, side: Side) -> int:
         return sum(max(0, int(level.ask_volume if side == "buy" else level.bid_volume)) for level in self.levels)
 
-    def vwap(self, side: Side, quantity: int) -> float | None:
+    def fills(self, side: Side, quantity: int) -> list[tuple[int, float, int]] | None:
         if quantity <= 0:
             raise ValueError("quantity must be positive")
         rows = [
             (
+                level.level,
                 float(level.ask_price if side == "buy" else level.bid_price),
                 max(0, int(level.ask_volume if side == "buy" else level.bid_volume)),
             )
             for level in self.levels
         ]
-        rows = [(price, volume) for price, volume in rows if price > 0 and volume > 0]
-        rows.sort(key=lambda item: item[0], reverse=side == "sell")
+        rows = [(level, price, volume) for level, price, volume in rows if price > 0 and volume > 0]
+        rows.sort(key=lambda item: item[1], reverse=side == "sell")
         remaining = quantity
-        value = 0.0
-        for price, volume in rows:
+        fills: list[tuple[int, float, int]] = []
+        for level, price, volume in rows:
             filled = min(remaining, volume)
-            value += price * filled
+            fills.append((level, price, filled))
             remaining -= filled
             if remaining == 0:
-                return value / quantity
+                return fills
         return None
+
+    def vwap(self, side: Side, quantity: int) -> float | None:
+        fills = self.fills(side, quantity)
+        return None if fills is None else sum(price * filled for _, price, filled in fills) / quantity
 
     def validation_reasons(self, label: str) -> list[str]:
         best = self.best
