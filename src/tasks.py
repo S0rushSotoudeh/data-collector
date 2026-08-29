@@ -21,7 +21,7 @@ def _set_collection_run(run_id: str | None, status: str, result: dict | None = N
         update_run(run_id, status=status, error=error or "")
 
 
-def _collection_run_id(task: Any, explicit_run_id: str | None = None) -> str | None:
+def _operation_run_id(task: Any, explicit_run_id: str | None = None) -> str | None:
     if explicit_run_id:
         return explicit_run_id
     headers = getattr(task.request, "headers", None) or {}
@@ -37,7 +37,7 @@ def _run_collection(
 ) -> dict:
     from src.services.operation_runs import RunProgressReporter
 
-    run_id = _collection_run_id(task, explicit_run_id)
+    run_id = _operation_run_id(task, explicit_run_id)
     progress = RunProgressReporter(run_id)
     _set_collection_run(run_id, "running")
     try:
@@ -283,6 +283,9 @@ def compute_yield_curve_snapshot() -> dict:
 def backfill_yield_curves(self, start_date_str: str, end_date_str: str) -> dict:
     from src.analytics.engine import compute_curve_for_date
     from src.db.clickhouse import get_async_client
+    from src.services.operation_runs import RunProgressReporter
+
+    progress = RunProgressReporter(_operation_run_id(self))
 
     async def _backfill():
         ch = await get_async_client()
@@ -323,6 +326,9 @@ def backfill_yield_curves(self, start_date_str: str, end_date_str: str) -> dict:
 
         skipped = len(source_dates) - len(pending)
         total = len(pending)
+        output_count = 0
+        warning_count = 0
+        progress.set_total(total)
 
         if skipped:
             logger.info(
@@ -335,10 +341,17 @@ def backfill_yield_curves(self, start_date_str: str, end_date_str: str) -> dict:
             logger.info("Yield curve backfill [%d/%d] %s", i, total, d_str)
             result = await compute_curve_for_date(d_str)
             logger.info("Yield curve backfill %s done: %s", d_str, result)
+            rows = int(result.get("fits", 0) or 0) + int(result.get("bonds", 0) or 0)
+            warnings = int(bool(result.get("error")))
+            output_count += rows
+            warning_count += warnings
+            progress.advance(output_count=rows, warning_count=warnings)
 
         return {
             "dates_processed": total,
             "dates_skipped": skipped,
+            "total_rows": output_count,
+            "warning_count": warning_count,
         }
 
     return asyncio.run(_backfill())
