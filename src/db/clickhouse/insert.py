@@ -20,6 +20,10 @@ from src.db.clickhouse.schema import (
     STOCK_ORDER_BOOK_COLUMNS,
     STOCK_TRADES_TABLE,
     STOCK_TRADES_COLUMNS,
+    GOLD_ORDER_BOOK_TABLE,
+    GOLD_ORDER_BOOK_COLUMNS,
+    GOLD_TRADES_TABLE,
+    GOLD_TRADES_COLUMNS,
 )
 
 
@@ -73,6 +77,14 @@ def insert_bond_trades(rows: list[dict[str, Any]], client: Client | None = None)
 
 def insert_stock_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
     _insert_trades(rows, STOCK_TRADES_TABLE, STOCK_TRADES_COLUMNS, client)
+
+
+def insert_gold_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+    _insert_order_book(rows, GOLD_ORDER_BOOK_TABLE, GOLD_ORDER_BOOK_COLUMNS, client)
+
+
+def insert_gold_trades(rows: list[dict[str, Any]], client: Client | None = None) -> None:
+    _insert_trades(rows, GOLD_TRADES_TABLE, GOLD_TRADES_COLUMNS, client)
 
 
 def insert_option_order_book(rows: list[dict[str, Any]], client: Client | None = None) -> None:
