@@ -60,6 +60,24 @@ celery.conf.beat_schedule = {
             hour=beat_hour, minute=env_int("BEAT_STOCK_SYNC_MINUTE")
         ),
     },
+    "sync-gold-instruments": {
+        "task": "src.tasks.sync_gold_instruments",
+        "schedule": crontab(
+            hour=beat_hour, minute=int(os.environ.get("BEAT_GOLD_SYNC_MINUTE", "15"))
+        ),
+    },
+    "fetch-yesterday-gold-order-book": {
+        "task": "src.tasks.fetch_yesterday_gold_order_book",
+        "schedule": crontab(
+            hour=beat_hour, minute=int(os.environ.get("BEAT_GOLD_ORDER_BOOK_MINUTE", "25"))
+        ),
+    },
+    "fetch-yesterday-gold-trades": {
+        "task": "src.tasks.fetch_yesterday_gold_trades",
+        "schedule": crontab(
+            hour=beat_hour, minute=int(os.environ.get("BEAT_GOLD_TRADES_MINUTE", "35"))
+        ),
+    },
     "fetch-yesterday-option-order-book": {
         "task": "src.tasks.fetch_yesterday_option_orderbook",
         "schedule": crontab(
