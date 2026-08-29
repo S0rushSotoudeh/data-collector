@@ -1,0 +1,1 @@
+# Gold collector module

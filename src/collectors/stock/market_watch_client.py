@@ -153,6 +153,14 @@ class StockTsetmcClient:
         raw_list = data.get("tradeHistory") or []
         return [TradeEntry.from_dict(item) for item in raw_list]
 
+    async def get_instrument_search(self, query: str) -> list[dict[str, Any]]:
+        import urllib.parse
+        encoded = urllib.parse.quote(query)
+        data = await self._request_json(f"/Instrument/GetInstrumentSearch/{encoded}")
+        if data is None:
+            return []
+        return data.get("instrumentSearch") or []
+
     async def close(self) -> None:
         if self._cdn_client is not None:
             await self._cdn_client.aclose()
