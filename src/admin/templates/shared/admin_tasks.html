@@ -76,6 +76,17 @@
 </div>
 
 <div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Sync Gold Instruments</h3></div>
+  <div class="card-body">
+    <p>Fetch gold fund instrument metadata from TSETMC and upsert into PostgreSQL.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-4">
+      <input type="hidden" name="action" value="sync-gold-instruments">
+      <button type="submit" class="btn btn-primary">Sync Gold Instruments</button>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Backfill Bond Order Books</h3></div>
   <div class="card-body">
     <p>Fetch historical bond order book snapshots from TSETMC for the given date range.</p>
@@ -139,6 +150,27 @@
 </div>
 
 <div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Gold Order Books</h3></div>
+  <div class="card-body">
+    <p>Fetch historical gold order book snapshots from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-gold-order-books">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Gold Order Books</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
   <div class="card-header"><h3 class="card-title">Backfill Bond Trades</h3></div>
   <div class="card-body">
     <p>Fetch historical bond trade history from TSETMC for the given date range.</p>
@@ -174,6 +206,27 @@
         </div>
         <div class="col-auto">
           <button type="submit" class="btn btn-warning">Backfill Stock Trades</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title">Backfill Gold Trades</h3></div>
+  <div class="card-body">
+    <p>Fetch historical gold trade history from TSETMC for the given date range.</p>
+    <form method="post" action="{{ request.url.path }}" class="mb-3">
+      <input type="hidden" name="action" value="backfill-gold-trades">
+      <div class="row g-2 mb-2">
+        <div class="col-auto">
+          <input type="date" class="form-control" name="start_date" value="{{ start_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <input type="date" class="form-control" name="end_date" value="{{ end_date or '' }}" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-warning">Backfill Gold Trades</button>
         </div>
       </div>
     </form>

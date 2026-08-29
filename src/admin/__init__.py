@@ -5,6 +5,8 @@ from src.admin.auth import BasicAuthBackend
 from src.admin.bonds.bond_views import BondInstrumentAdmin
 from src.admin.option.option_views import OptionInstrumentAdmin
 from src.admin.stock.stock_views import StockInstrumentAdmin
+from src.admin.gold.gold_views import GoldInstrumentAdmin
+from src.admin.gold.gold_clickhouse_views import GoldOrderBookView, GoldTradesView
 from src.admin.bonds.bond_trades_values_views import BondTradesRankingChartView, BondTradesValuesChartView
 from src.admin.bonds.yield_chart_views import YieldCurveChartView, YieldSpreadChartView
 from src.admin.bonds.clickhouse_views import BondOrderBookView, BondTradesView
@@ -66,6 +68,9 @@ def create_admin(
     admin.add_view(MarketPotentialRunsView)
     admin.add_view(StockOrderBookView)
     admin.add_view(StockTradesView)
+    admin.add_view(GoldInstrumentAdmin)
+    admin.add_view(GoldOrderBookView)
+    admin.add_view(GoldTradesView)
     admin.add_view(YieldCurveFitsView)
     admin.add_view(YieldCurveBondsView)
     admin.add_view(YieldCurveChartView)

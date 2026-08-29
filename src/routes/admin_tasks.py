@@ -19,6 +19,9 @@ from src.tasks import (
     sync_bond_instruments,
     sync_option_instruments,
     sync_stock_instruments,
+    sync_gold_instruments,
+    backfill_gold_order_books_task,
+    backfill_gold_trades_task,
     sync_ime_producers,
     backfill_ime_physical_trades,
 )
@@ -126,6 +129,24 @@ async def api_sync_option_instruments(request: Request):
 async def api_sync_stock_instruments(request: Request):
     await _require_admin(request)
     return _submitted(sync_stock_instruments, request)
+
+
+@router.post("/sync-gold-instruments", response_model=TaskSubmittedResponse)
+async def api_sync_gold_instruments(request: Request):
+    await _require_admin(request)
+    return _submitted(sync_gold_instruments, request)
+
+
+@router.post("/backfill-gold-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_gold_order_books(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_gold_order_books_task, request, body=body)
+
+
+@router.post("/backfill-gold-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_gold_trades(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_gold_trades_task, request, body=body)
 
 
 @router.post("/sync-ime-producers", response_model=TaskSubmittedResponse)
