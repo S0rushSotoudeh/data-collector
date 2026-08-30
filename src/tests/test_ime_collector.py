@@ -8,7 +8,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from src.collectors.ime.client import ImeClient, ImeError, decode_asmx_response, to_jalali_string
+from src.collectors.ime.client import (
+    ImeClient,
+    ImeError,
+    decode_asmx_response,
+    parse_gold_etf_ins_codes,
+    to_jalali_string,
+)
 from src.collectors.ime.service import (
     ALL_HISTORY_START,
     _chunks,
@@ -56,6 +62,23 @@ def test_decode_rejects_unexpected_payload() -> None:
 
     with pytest.raises(ImeError, match="expected 'd'"):
         decode_asmx_response(response)
+
+
+def test_parse_official_gold_etf_ins_codes() -> None:
+    page = """
+        <table>
+          <tr><td>طلا</td><td>نمونه یک</td><td><a href="/instInfo/123">جزئیات</a></td></tr>
+          <tr><td>شاخه طلا</td><td>نمونه دو</td><td><a href="/?i=456">جزئیات</a></td></tr>
+          <tr><td>اوراق بهادار</td><td>سهام</td><td><a href="/instInfo/789">جزئیات</a></td></tr>
+        </table>
+    """
+
+    assert parse_gold_etf_ins_codes(page) == {"123", "456"}
+
+
+def test_official_gold_etf_row_requires_ins_code() -> None:
+    with pytest.raises(ImeError, match="no TSETMC InsCode"):
+        parse_gold_etf_ins_codes("<tr><td>طلا</td><td>نمونه</td><td>بدون لینک</td></tr>")
 
 
 def test_gregorian_dates_are_sent_as_jalali() -> None:

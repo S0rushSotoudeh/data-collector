@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from datetime import date
+from html import unescape
 from typing import Any
 
 import httpx
@@ -11,6 +13,34 @@ import jdatetime
 
 class ImeError(RuntimeError):
     pass
+
+
+def parse_gold_etf_ins_codes(page: str) -> set[str]:
+    codes: set[str] = set()
+    for row in re.findall(r"<tr\b[^>]*>(.*?)</tr>", page, flags=re.IGNORECASE | re.DOTALL):
+        cells = re.findall(r"<td\b[^>]*>(.*?)</td>", row, flags=re.IGNORECASE | re.DOTALL)
+        if len(cells) < 3:
+            continue
+
+        category = _html_text(cells[0])
+        if category != "طلا" and "شاخه طلا" not in category:
+            continue
+
+        match = re.search(r"(?:instInfo/|[?&]i=)(\d+)", unescape(cells[2]), re.IGNORECASE)
+        if match is None:
+            raise ImeError("Official IME gold ETF row has no TSETMC InsCode")
+        codes.add(match.group(1))
+
+    if not codes:
+        raise ImeError("Official IME page returned no gold ETFs")
+    return codes
+
+
+def _html_text(value: str) -> str:
+    value = re.sub(r"<br\s*/?>", " ", value, flags=re.IGNORECASE)
+    value = unescape(re.sub(r"<[^>]+>", " ", value))
+    value = value.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ")
+    return " ".join(value.split())
 
 
 def decode_asmx_response(response: httpx.Response) -> Any:
@@ -90,6 +120,25 @@ class ImeClient:
                 if attempt + 1 < self.retries:
                     await asyncio.sleep(2**attempt)
         raise ImeError(f"IME request {method!r} failed after {self.retries} attempts") from last_error
+
+    async def _get_text(self, path: str) -> str:
+        last_error: Exception | None = None
+        for attempt in range(self.retries):
+            if self.request_delay:
+                await asyncio.sleep(self.request_delay)
+            try:
+                assert self._client is not None
+                response = await self._client.get(path)
+                response.raise_for_status()
+                return response.text
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if attempt + 1 < self.retries:
+                    await asyncio.sleep(2**attempt)
+        raise ImeError(f"IME request {path!r} failed after {self.retries} attempts") from last_error
+
+    async def get_gold_etf_ins_codes(self) -> set[str]:
+        return parse_gold_etf_ins_codes(await self._get_text("/ExchangeTradedFunds.html"))
 
     async def get_producers(self) -> list[dict[str, Any]]:
         data = await self._post("GetProducers", {"Language": 8})

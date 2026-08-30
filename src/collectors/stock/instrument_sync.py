@@ -1,8 +1,10 @@
 import logging
+from contextlib import AsyncExitStack
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from src.collectors.ime.client import ImeClient
 from src.collectors.stock.market_watch_client import StockTsetmcClient
 from src.collectors.stock.transformer import (
     instrument_info_to_pg_attrs,
@@ -19,17 +21,19 @@ logger = logging.getLogger(__name__)
 async def sync_stock_instruments_to_pg(
     client: StockTsetmcClient | None = None,
     progress: RunProgressReporter | None = None,
+    ime_client: ImeClient | None = None,
 ) -> dict[str, Any]:
     errors: list[str] = []
     synced = 0
 
-    own_client = client is None
-    if own_client:
-        client = StockTsetmcClient()
-        await client.__aenter__()
+    async with AsyncExitStack() as stack:
+        if client is None:
+            client = await stack.enter_async_context(StockTsetmcClient())
+        if ime_client is None:
+            ime_client = await stack.enter_async_context(ImeClient())
 
-    try:
         assert client is not None
+        gold_etf_codes = await ime_client.get_gold_etf_ins_codes()
         market_watch = await client.get_market_watch()
         stock_items = [item for item in market_watch if is_stock(item)]
         if progress:
@@ -39,12 +43,15 @@ async def sync_stock_instruments_to_pg(
             warning_count = 0
             try:
                 code = item.ins_code
-                partial_attrs = market_watch_to_pg_attrs(item)
+                is_gold_etf = code in gold_etf_codes
+                partial_attrs = market_watch_to_pg_attrs(item, is_gold_etf=is_gold_etf)
                 status = partial_attrs.get("status")
 
                 info = await client.get_instrument_info(code)
                 if info is not None:
-                    full_attrs = instrument_info_to_pg_attrs(info, status=status)
+                    full_attrs = instrument_info_to_pg_attrs(
+                        info, status=status, is_gold_etf=is_gold_etf
+                    )
                 else:
                     full_attrs = partial_attrs
 
@@ -58,9 +65,6 @@ async def sync_stock_instruments_to_pg(
                     progress.advance(output_count=1 if warning_count == 0 else 0, warning_count=warning_count)
 
         return {"synced": synced, "errors": errors}
-    finally:
-        if own_client:
-            await client.__aexit__(None, None, None)
 
 
 def _upsert_instrument(attrs: dict[str, Any]) -> None:

@@ -28,12 +28,20 @@ class TestMarketWatchToPgAttrs:
         assert attrs["name_fa"] == "فولاد مباركه اصفهان"
         assert attrs["name_en"] == "فولاد مباركه اصفهان"
         assert attrs["status"] == "active"
+        assert attrs["is_gold_etf"] is False
 
     def test_is_stock_consistent(self) -> None:
         item = MarketWatchItem(
             ins_code="1", instrument_id="IRO1", symbol="s", name="اختیارخ x-1-1", flow_code=""
         )
         assert is_stock(item) is False
+
+    def test_gold_etf_classification(self) -> None:
+        item = MarketWatchItem(
+            ins_code="1", instrument_id="IRO1", symbol="ناشناخته", name="نام موقت", flow_code=""
+        )
+
+        assert market_watch_to_pg_attrs(item, is_gold_etf=True)["is_gold_etf"] is True
 
 
 class TestInstrumentInfoToPgAttrs:
@@ -79,6 +87,12 @@ class TestInstrumentInfoToPgAttrs:
         assert attrs["avg_daily_volume_5y"] == 500000
         assert attrs["last_trade_date"] == date(2026, 7, 1)
         assert attrs["status"] == "active"
+        assert attrs["is_gold_etf"] is False
+
+    def test_gold_etf_from_detailed_name(self) -> None:
+        info = self._make_info()
+
+        assert instrument_info_to_pg_attrs(info, is_gold_etf=True)["is_gold_etf"] is True
 
     def test_no_status(self) -> None:
         info = self._make_info()
