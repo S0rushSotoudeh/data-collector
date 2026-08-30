@@ -14,7 +14,7 @@ from src.db.clickhouse import price_to_storage
 def _normalize(name: str | None) -> str:
     if name is None:
         return ""
-    return name.replace("ي", "ی")
+    return name.replace("ي", "ی").replace("ك", "ک").replace("\u200c", " ").strip()
 
 
 def is_option(item: MarketWatchItem) -> bool:
@@ -29,7 +29,9 @@ def is_stock(item: MarketWatchItem) -> bool:
     return not is_option(item) and not is_bond(item)
 
 
-def market_watch_to_pg_attrs(item: MarketWatchItem) -> dict[str, Any]:
+def market_watch_to_pg_attrs(
+    item: MarketWatchItem, *, is_gold_etf: bool = False
+) -> dict[str, Any]:
     return {
         "instrument_code": item.ins_code,
         "name_fa": item.name,
@@ -37,6 +39,7 @@ def market_watch_to_pg_attrs(item: MarketWatchItem) -> dict[str, Any]:
         "symbol": item.symbol,
         "instrument_id": item.instrument_id,
         "status": "active",
+        "is_gold_etf": is_gold_etf,
     }
 
 
@@ -95,6 +98,8 @@ def best_limits_to_order_book_rows(
 def instrument_info_to_pg_attrs(
     info: StockInstrumentInfo,
     status: str | None = None,
+    *,
+    is_gold_etf: bool = False,
 ) -> dict[str, Any]:
     attrs: dict[str, Any] = {
         "instrument_code": info.ins_code,
@@ -119,6 +124,7 @@ def instrument_info_to_pg_attrs(
         "high_yearly": _safe_decimal(info.max_year),
         "avg_daily_volume_5y": _safe_int(info.avg_daily_volume_5y),
         "last_trade_date": _d_even_to_date(info.d_even),
+        "is_gold_etf": is_gold_etf,
     }
     if status is not None:
         attrs["status"] = status

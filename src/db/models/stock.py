@@ -14,6 +14,7 @@ class StockInstrument(SQLModel, table=True):  # type: ignore
     symbol: str | None = Field(default=None, max_length=50)
     isin: str | None = Field(default=None, max_length=30)
     instrument_id: str | None = Field(default=None, max_length=50, unique=True)
+    is_gold_etf: bool = Field(default=False)
     total_issued: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     base_volume: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     market_code: int | None = Field(default=None)

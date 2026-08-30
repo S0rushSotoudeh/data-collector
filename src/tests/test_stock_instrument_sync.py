@@ -52,40 +52,82 @@ class TestSyncStockInstrumentsToPg:
         )
         return m
 
+    @pytest.fixture
+    def mock_ime_client(self) -> MagicMock:
+        client = AsyncMock()
+        client.get_gold_etf_ins_codes.return_value = set()
+        return client
+
     @patch("src.collectors.stock.instrument_sync.SessionLocal")
     async def test_sync_success_filters_non_stocks(
-        self, mock_session_local: MagicMock, mock_client: MagicMock
+        self, mock_session_local: MagicMock, mock_client: MagicMock, mock_ime_client: MagicMock
     ) -> None:
         mock_session = MagicMock()
         mock_session_local.return_value.__enter__.return_value = mock_session
 
-        result = await sync_stock_instruments_to_pg(mock_client)
+        result = await sync_stock_instruments_to_pg(mock_client, ime_client=mock_ime_client)
 
         assert result["synced"] == 2
         assert result["errors"] == []
         assert mock_session.merge.call_count == 2
         assert mock_session.commit.call_count == 2
+        mock_ime_client.get_gold_etf_ins_codes.assert_awaited_once()
 
     @patch("src.collectors.stock.instrument_sync.SessionLocal")
     async def test_sync_with_error(
-        self, mock_session_local: MagicMock, mock_client: MagicMock
+        self, mock_session_local: MagicMock, mock_client: MagicMock, mock_ime_client: MagicMock
     ) -> None:
         mock_client.get_instrument_info = AsyncMock(side_effect=ValueError("API error"))
         mock_session = MagicMock()
         mock_session_local.return_value.__enter__.return_value = mock_session
 
-        result = await sync_stock_instruments_to_pg(mock_client)
+        result = await sync_stock_instruments_to_pg(mock_client, ime_client=mock_ime_client)
 
         assert result["synced"] == 0
         assert len(result["errors"]) == 2
 
     @patch("src.collectors.stock.instrument_sync.SessionLocal")
     async def test_sync_empty_market_watch(
-        self, mock_session_local: MagicMock, mock_client: MagicMock
+        self, mock_session_local: MagicMock, mock_client: MagicMock, mock_ime_client: MagicMock
     ) -> None:
         mock_client.get_market_watch.return_value = []
 
-        result = await sync_stock_instruments_to_pg(mock_client)
+        result = await sync_stock_instruments_to_pg(mock_client, ime_client=mock_ime_client)
 
         assert result["synced"] == 0
         assert result["errors"] == []
+
+    @patch("src.collectors.stock.instrument_sync.SessionLocal")
+    async def test_sync_uses_official_ime_codes_for_gold_flag(
+        self, mock_session_local: MagicMock, mock_client: MagicMock, mock_ime_client: MagicMock
+    ) -> None:
+        mock_client.get_market_watch.return_value = [
+            MarketWatchItem(
+                ins_code="35100368959864864",
+                instrument_id="IRO1GOLD0001",
+                symbol="ETF123",
+                name="نام موقت",
+                flow_code="1A",
+            )
+        ]
+        mock_ime_client.get_gold_etf_ins_codes.return_value = {"35100368959864864"}
+        mock_session = MagicMock()
+        mock_session_local.return_value.__enter__.return_value = mock_session
+
+        result = await sync_stock_instruments_to_pg(mock_client, ime_client=mock_ime_client)
+
+        assert result["synced"] == 1
+        instrument = mock_session.merge.call_args.args[0]
+        assert instrument.is_gold_etf is True
+
+    @patch("src.collectors.stock.instrument_sync.SessionLocal")
+    async def test_sync_stops_before_writes_when_official_list_fails(
+        self, mock_session_local: MagicMock, mock_client: MagicMock, mock_ime_client: MagicMock
+    ) -> None:
+        mock_ime_client.get_gold_etf_ins_codes.side_effect = RuntimeError("IME unavailable")
+
+        with pytest.raises(RuntimeError, match="IME unavailable"):
+            await sync_stock_instruments_to_pg(mock_client, ime_client=mock_ime_client)
+
+        mock_client.get_market_watch.assert_not_awaited()
+        mock_session_local.assert_not_called()

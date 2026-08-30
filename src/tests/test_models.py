@@ -43,3 +43,7 @@ class TestStockInstrument:
         table = StockInstrument.__table__
         assert table.c.isin.unique is not True
         assert table.c.instrument_id.unique is True
+
+    def test_gold_etf_defaults_to_false(self) -> None:
+        instrument = StockInstrument(instrument_code="12345")
+        assert instrument.is_gold_etf is False
