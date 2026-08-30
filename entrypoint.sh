@@ -1,4 +1,5 @@
 #!/bin/sh
+# Keep LF line endings so Linux can resolve this interpreter.
 set -e
 
 echo "Running PostgreSQL migrations..."

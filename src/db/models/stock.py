@@ -12,7 +12,7 @@ class StockInstrument(SQLModel, table=True):  # type: ignore
     name_fa: str | None = Field(default=None, max_length=200)
     name_en: str | None = Field(default=None, max_length=100)
     symbol: str | None = Field(default=None, max_length=50)
-    isin: str | None = Field(default=None, max_length=30, unique=True)
+    isin: str | None = Field(default=None, max_length=30)
     instrument_id: str | None = Field(default=None, max_length=50, unique=True)
     total_issued: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))
     base_volume: int | None = Field(default=None, sa_column=Column(BigInteger, nullable=True))

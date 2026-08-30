@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 from sqlmodel import Field, SQLModel
 
-from src.db.models import BondInstrument
+from src.db.models import BondInstrument, StockInstrument
 
 
 class TestBondInstrument:
@@ -36,3 +36,10 @@ class TestBondInstrument:
         assert "idx_bond_symbol" in names
         assert "idx_bond_status" in names
         assert "idx_bond_maturity" in names
+
+
+class TestStockInstrument:
+    def test_isin_is_not_unique_but_instrument_id_is(self) -> None:
+        table = StockInstrument.__table__
+        assert table.c.isin.unique is not True
+        assert table.c.instrument_id.unique is True
