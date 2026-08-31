@@ -63,9 +63,9 @@ async def api_gold_kalman_arbitrage_intraday(
     instrument1: str = Query(..., description="First instrument code (observed Y)"),
     instrument2: str = Query(..., description="Second instrument code (predictor X)"),
     date: date = Query(..., description="Trade date"),
-    price_source: str = Query(
-        default="orderbook_micro",
-        description="Price source: orderbook_micro, orderbook_mid, or trades",
+    price_mode: str = Query(
+        default="micro",
+        description="Price mode: micro (volume-weighted depth) or best (top of book quotes)",
     ),
     from_time: int | None = Query(default=None, description="HHMMSS start"),
     to_time: int | None = Query(default=None, description="HHMMSS end"),
@@ -87,56 +87,40 @@ async def api_gold_kalman_arbitrage_intraday(
     else:
         to_time = None
 
-    if price_source == "trades":
-        points1 = await get_gold_trades_comparison_intraday(
-            instrument_code=instrument1,
-            trade_date=date,
-            from_time=from_time,
-            to_time=to_time,
-            bucket_seconds=5,
-        )
-        points2 = await get_gold_trades_comparison_intraday(
-            instrument_code=instrument2,
-            trade_date=date,
-            from_time=from_time,
-            to_time=to_time,
-            bucket_seconds=5,
-        )
-    else:
-        ptype = price_source.removeprefix("orderbook_") if price_source.startswith("orderbook_") else "micro"
-        points1 = await get_gold_order_book_micro_price_intraday(
-            instrument_code=instrument1,
-            trade_date=date,
-            from_time=from_time,
-            to_time=to_time,
-            bucket_seconds=5,
-            price_type=ptype,
-        )
-        points2 = await get_gold_order_book_micro_price_intraday(
-            instrument_code=instrument2,
-            trade_date=date,
-            from_time=from_time,
-            to_time=to_time,
-            bucket_seconds=5,
-            price_type=ptype,
-        )
+    points1 = await get_gold_order_book_micro_price_intraday(
+        instrument_code=instrument1,
+        trade_date=date,
+        from_time=from_time,
+        to_time=to_time,
+        bucket_seconds=5,
+        price_type="micro" if price_mode == "micro" else "mid",
+    )
+    points2 = await get_gold_order_book_micro_price_intraday(
+        instrument_code=instrument2,
+        trade_date=date,
+        from_time=from_time,
+        to_time=to_time,
+        bucket_seconds=5,
+        price_type="micro" if price_mode == "micro" else "mid",
+    )
 
     # Time alignment with forward fill
+    is_micro = (price_mode == "micro")
     time_map: dict[int, dict[str, float]] = {}
     for p in points1:
         t = p["trade_time"]
         if t not in time_map:
             time_map[t] = {}
         time_map[t]["p1"] = p["price"]
-        time_map[t]["p1_bid"] = p.get("best_bid", p["price"])
-        time_map[t]["p1_ask"] = p.get("best_ask", p["price"])
+        time_map[t]["p1_bid"] = p.get("weighted_bid" if is_micro else "best_bid", p["price"])
+        time_map[t]["p1_ask"] = p.get("weighted_ask" if is_micro else "best_ask", p["price"])
     for p in points2:
         t = p["trade_time"]
         if t not in time_map:
             time_map[t] = {}
         time_map[t]["p2"] = p["price"]
-        time_map[t]["p2_bid"] = p.get("best_bid", p["price"])
-        time_map[t]["p2_ask"] = p.get("best_ask", p["price"])
+        time_map[t]["p2_bid"] = p.get("weighted_bid" if is_micro else "best_bid", p["price"])
+        time_map[t]["p2_ask"] = p.get("weighted_ask" if is_micro else "best_ask", p["price"])
 
     all_times = sorted(time_map.keys())
     aligned_times: list[int] = []
@@ -201,7 +185,7 @@ async def api_gold_kalman_arbitrage_intraday(
         "trade_date": str(date),
         "instrument1": instrument1,
         "instrument2": instrument2,
-        "price_source": price_source,
+        "price_mode": price_mode,
         "results": kalman_res,
     }
 

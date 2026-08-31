@@ -45,50 +45,52 @@ def test_run_gold_kalman_filter_empty() -> None:
 async def test_api_gold_kalman_arbitrage_micro_price(mock_get_ob) -> None:
     mock_get_ob.side_effect = [
         [
-            {"trade_time": 120000, "price": 1000.0},
-            {"trade_time": 120005, "price": 1010.0},
+            {"trade_time": 120000, "price": 1000.0, "weighted_bid": 999.0, "weighted_ask": 1001.0},
+            {"trade_time": 120005, "price": 1010.0, "weighted_bid": 1009.0, "weighted_ask": 1011.0},
         ],
         [
-            {"trade_time": 120000, "price": 500.0},
-            {"trade_time": 120005, "price": 505.0},
+            {"trade_time": 120000, "price": 500.0, "weighted_bid": 499.0, "weighted_ask": 501.0},
+            {"trade_time": 120005, "price": 505.0, "weighted_bid": 504.0, "weighted_ask": 506.0},
         ],
     ]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         res = await ac.get(
-            "/api/v1/gold-analytics/kalman-arbitrage/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&price_source=orderbook_micro"
+            "/api/v1/gold-analytics/kalman-arbitrage/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&price_mode=micro"
         )
         assert res.status_code == 200
         data = res.json()
         assert data["trade_date"] == "2026-08-01"
-        assert data["price_source"] == "orderbook_micro"
+        assert data["price_mode"] == "micro"
         assert len(data["results"]["times"]) == 2
         assert len(data["results"]["z_score"]) == 2
         assert len(data["results"]["beta"]) == 2
+        assert len(data["results"]["p1_bid_norm"]) == 2
+        assert len(data["results"]["p1_ask_norm"]) == 2
 
 
 @pytest.mark.asyncio
-@patch("src.routes.gold_analytics.get_gold_trades_comparison_intraday", new_callable=AsyncMock)
-async def test_api_gold_kalman_arbitrage_trades(mock_get_trades) -> None:
-    mock_get_trades.side_effect = [
+@patch("src.routes.gold_analytics.get_gold_order_book_micro_price_intraday", new_callable=AsyncMock)
+async def test_api_gold_kalman_arbitrage_best_price(mock_get_ob) -> None:
+    mock_get_ob.side_effect = [
         [
-            {"trade_time": 120000, "price": 1000.0, "value": 50000.0},
-            {"trade_time": 120005, "price": 1010.0, "value": 50000.0},
+            {"trade_time": 120000, "price": 1000.0, "best_bid": 999.0, "best_ask": 1001.0},
+            {"trade_time": 120005, "price": 1010.0, "best_bid": 1009.0, "best_ask": 1011.0},
         ],
         [
-            {"trade_time": 120000, "price": 500.0, "value": 25000.0},
-            {"trade_time": 120005, "price": 505.0, "value": 25000.0},
+            {"trade_time": 120000, "price": 500.0, "best_bid": 499.0, "best_ask": 501.0},
+            {"trade_time": 120005, "price": 505.0, "best_bid": 504.0, "best_ask": 506.0},
         ],
     ]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         res = await ac.get(
-            "/api/v1/gold-analytics/kalman-arbitrage/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&price_source=trades"
+            "/api/v1/gold-analytics/kalman-arbitrage/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&price_mode=best"
         )
         assert res.status_code == 200
         data = res.json()
         assert data["trade_date"] == "2026-08-01"
-        assert data["price_source"] == "trades"
+        assert data["price_mode"] == "best"
         assert len(data["results"]["times"]) == 2
