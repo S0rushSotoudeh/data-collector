@@ -52,9 +52,13 @@
       <div class="col-md-2">
         <label class="form-label">Price Source</label>
         <select id="gka-price-source" class="form-select" name="price_source">
-          <option value="orderbook_micro" selected>Order Book: Micro-Price</option>
-          <option value="orderbook_mid">Order Book: Mid-Price</option>
-          <option value="trades">Executed Trades</option>
+          <option value="orderbook_micro" selected>OB: Micro-Price (Weighted Depth 1)</option>
+          <option value="orderbook_best_bid">OB: Best Bid (سرخط خرید)</option>
+          <option value="orderbook_best_ask">OB: Best Ask (سرخط فروش)</option>
+          <option value="orderbook_weighted_bid">OB: Weighted Bid (حجم کل خرید)</option>
+          <option value="orderbook_weighted_ask">OB: Weighted Ask (حجم کل فروش)</option>
+          <option value="orderbook_mid">OB: Mid-Price (میانگین سرخط)</option>
+          <option value="trades">Executed Trades (معاملات)</option>
         </select>
       </div>
 
@@ -208,14 +212,28 @@
       }
     }
 
-    // Main Chart (Top): Dynamic Beta & Normalized Prices (Base 100)
+    var p1Bid = res.p1_bid_norm || p1Norm;
+    var p1Ask = res.p1_ask_norm || p1Norm;
+    var p2Bid = res.p2_bid_norm || p2Norm;
+    var p2Ask = res.p2_ask_norm || p2Norm;
+
+    // Main Chart (Top): Dynamic Beta & Normalized Bid/Ask (Base 100)
     betaChart.setOption({
-      title: { text: "Dynamic Hedge Ratio β(t) & Normalized Returns (" + sym1 + " vs " + sym2 + ")", left: "center", top: 10 },
+      title: { text: "Dynamic Hedge Ratio β(t) & Order Book Bid/Ask Spreads (" + sym1 + " vs " + sym2 + ")", left: "center", top: 10 },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "cross", crossStyle: { color: "#999" } }
       },
-      legend: { data: ["Hedge Ratio β", sym1 + " (Base 100)", sym2 + " (Base 100)"], top: 35 },
+      legend: {
+        data: [
+          "Hedge Ratio β",
+          sym1 + " Ask",
+          sym1 + " Bid",
+          sym2 + " Ask",
+          sym2 + " Bid"
+        ],
+        top: 35
+      },
       grid: { left: "4%", right: "4%", bottom: "12%", top: "18%", containLabel: true },
       dataZoom: [
         { type: "inside", start: 0, end: 100 },
@@ -231,7 +249,7 @@
         },
         {
           type: "value",
-          name: "Normalized Return (Base 100)",
+          name: "Normalized Price (Base 100)",
           scale: true,
           position: "right",
           axisLabel: { formatter: function (v) { return Number(v).toFixed(1); } }
@@ -245,28 +263,48 @@
           data: times.map(function (t, i) { return [t, betas[i]]; }),
           smooth: true,
           showSymbol: false,
-          lineStyle: { width: 2.5, color: "#6f42c1" },
-          itemStyle: { color: "#6f42c1" }
+          lineStyle: { width: 2.5, color: "#7950f2" },
+          itemStyle: { color: "#7950f2" }
         },
         {
-          name: sym1 + " (Base 100)",
+          name: sym1 + " Ask",
           type: "line",
           yAxisIndex: 1,
-          data: times.map(function (t, i) { return [t, p1Norm[i]]; }),
+          data: times.map(function (t, i) { return [t, p1Ask[i]]; }),
           smooth: true,
           showSymbol: false,
-          lineStyle: { width: 1.8, color: "#e6a23c" },
-          itemStyle: { color: "#e6a23c" }
+          lineStyle: { width: 1.5, color: "#fa5252", type: "dashed" },
+          itemStyle: { color: "#fa5252" }
         },
         {
-          name: sym2 + " (Base 100)",
+          name: sym1 + " Bid",
           type: "line",
           yAxisIndex: 1,
-          data: times.map(function (t, i) { return [t, p2Norm[i]]; }),
+          data: times.map(function (t, i) { return [t, p1Bid[i]]; }),
           smooth: true,
           showSymbol: false,
-          lineStyle: { width: 1.8, color: "#409eff" },
-          itemStyle: { color: "#409eff" }
+          lineStyle: { width: 1.8, color: "#fab005" },
+          itemStyle: { color: "#fab005" }
+        },
+        {
+          name: sym2 + " Ask",
+          type: "line",
+          yAxisIndex: 1,
+          data: times.map(function (t, i) { return [t, p2Ask[i]]; }),
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 1.5, color: "#228be6", type: "dashed" },
+          itemStyle: { color: "#228be6" }
+        },
+        {
+          name: sym2 + " Bid",
+          type: "line",
+          yAxisIndex: 1,
+          data: times.map(function (t, i) { return [t, p2Bid[i]]; }),
+          smooth: true,
+          showSymbol: false,
+          lineStyle: { width: 1.8, color: "#15aabf" },
+          itemStyle: { color: "#15aabf" }
         }
       ]
     }, true);

@@ -1484,10 +1484,8 @@ async def get_gold_order_book_micro_price_intraday(
     where_clauses = [
         "instrument_code = {code:String}",
         "trade_date = {dt:Date}",
-        "depth_level = 1",
         "bid_price > 0",
         "ask_price > 0",
-        "(bid_volume + ask_volume) > 0",
     ]
     params: dict[str, Any] = {"code": instrument_code, "dt": trade_date, "b": bucket_seconds}
     if from_time is not None:
@@ -1498,19 +1496,17 @@ async def get_gold_order_book_micro_price_intraday(
         params["tt"] = to_time
     where = " AND ".join(where_clauses)
 
-    if price_type == "mid":
-        price_expr = "argMax(toFloat64(bid_price + ask_price) / 2.0, ref_id)"
-    else:  # micro
-        price_expr = (
-            "argMax("
-            "(toFloat64(bid_volume) * toFloat64(ask_price) + toFloat64(ask_volume) * toFloat64(bid_price)) / toFloat64(bid_volume + ask_volume), "
-            "ref_id)"
-        )
-
     q = (
         f"SELECT "
         f"    intDiv(trade_time, {{b:UInt32}}) * {{b:UInt32}} AS t_bucket, "
-        f"    {price_expr} AS calc_price "
+        f"    argMaxIf(toFloat64(bid_price), ref_id, depth_level = 1) AS best_bid, "
+        f"    argMaxIf(toFloat64(ask_price), ref_id, depth_level = 1) AS best_ask, "
+        f"    sum(toFloat64(bid_price * bid_volume)) / nullIf(sum(toFloat64(bid_volume)), 0) AS weighted_bid, "
+        f"    sum(toFloat64(ask_price * ask_volume)) / nullIf(sum(toFloat64(ask_volume)), 0) AS weighted_ask, "
+        f"    argMaxIf("
+        f"        (toFloat64(bid_volume) * toFloat64(ask_price) + toFloat64(ask_volume) * toFloat64(bid_price)) / nullIf(toFloat64(bid_volume + ask_volume), 0), "
+        f"        ref_id, depth_level = 1"
+        f"    ) AS micro_price "
         f"FROM `{STOCK_ORDER_BOOK_TABLE}` FINAL "
         f"WHERE {where} "
         f"GROUP BY t_bucket "
@@ -1519,8 +1515,32 @@ async def get_gold_order_book_micro_price_intraday(
     rows = (await client.query(q, parameters=params)).result_rows
     result: list[dict[str, Any]] = []
     for r in rows:
+        bb = float(r[1] or 0.0)
+        ba = float(r[2] or 0.0)
+        wb = float(r[3] or bb)
+        wa = float(r[4] or ba)
+        mp = float(r[5] or ((bb + ba) / 2.0 if (bb + ba) > 0 else 0.0))
+
+        if price_type == "best_bid":
+            selected_price = bb
+        elif price_type == "best_ask":
+            selected_price = ba
+        elif price_type == "weighted_bid":
+            selected_price = wb
+        elif price_type == "weighted_ask":
+            selected_price = wa
+        elif price_type == "mid":
+            selected_price = (bb + ba) / 2.0 if (bb + ba) > 0 else 0.0
+        else:  # micro
+            selected_price = mp
+
         result.append({
             "trade_time": int(r[0]),
-            "price": price_from_storage(float(r[1])),
+            "price": price_from_storage(selected_price),
+            "best_bid": price_from_storage(bb),
+            "best_ask": price_from_storage(ba),
+            "weighted_bid": price_from_storage(wb),
+            "weighted_ask": price_from_storage(wa),
+            "micro_price": price_from_storage(mp),
         })
     return result
