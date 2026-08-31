@@ -99,8 +99,8 @@ def run_gold_kalman_filter(
         out_alpha.append(round(alpha, 5))
         out_spread.append(round(e, 5))
         out_z_score.append(round(z, 3))
-        out_p1_norm.append(round((p1 / init_p1) * 100.0, 3))
-        out_p2_norm.append(round((p2 / init_p2) * 100.0, 3))
+        out_p1_norm.append(round(math.log(p1 / init_p1), 5))
+        out_p2_norm.append(round(math.log(p2 / init_p2), 5))
 
     return {
         "times": out_times,

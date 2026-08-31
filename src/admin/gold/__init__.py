@@ -4,14 +4,14 @@ from src.admin.gold.views import (
     GoldTradesView,
 )
 from src.admin.gold.analytics_views import (
-    GoldPriceComparisonChartView,
-    GoldKalmanArbitrageChartView,
+    GoldBestQuotesChartView,
+    GoldNormalizedSpreadChartView,
 )
 
 __all__ = [
     "GoldInstrumentAdmin",
     "GoldOrderBookView",
     "GoldTradesView",
-    "GoldPriceComparisonChartView",
-    "GoldKalmanArbitrageChartView",
+    "GoldBestQuotesChartView",
+    "GoldNormalizedSpreadChartView",
 ]

@@ -1429,49 +1429,6 @@ async def get_stock_trades_ranking(from_date: date, to_date: date) -> list[dict[
     rows = (await client.query(q, parameters=params)).result_rows
     return [{"instrument_code": r[0], "value": price_from_storage(int(r[1]))} for r in rows]
 
-
-async def get_gold_trades_comparison_intraday(
-    instrument_code: str,
-    trade_date: date,
-    from_time: int | None = None,
-    to_time: int | None = None,
-    bucket_seconds: int = 5,
-) -> list[dict[str, Any]]:
-    client = await get_async_client()
-    where_clauses = [
-        "instrument_code = {code:String}",
-        "trade_date = {dt:Date}",
-        "is_canceled = 0",
-    ]
-    params: dict[str, Any] = {"code": instrument_code, "dt": trade_date, "b": bucket_seconds}
-    if from_time is not None:
-        where_clauses.append("trade_time >= {ft:UInt32}")
-        params["ft"] = from_time
-    if to_time is not None:
-        where_clauses.append("trade_time <= {tt:UInt32}")
-        params["tt"] = to_time
-    where = " AND ".join(where_clauses)
-    q = (
-        f"SELECT "
-        f"    intDiv(trade_time, {{b:UInt32}}) * {{b:UInt32}} AS t_bucket, "
-        f"    argMax(price, trade_id) AS last_price, "
-        f"    sum(value) AS total_val "
-        f"FROM `{STOCK_TRADES_TABLE}` FINAL "
-        f"WHERE {where} "
-        f"GROUP BY t_bucket "
-        f"ORDER BY t_bucket ASC"
-    )
-    rows = (await client.query(q, parameters=params)).result_rows
-    result: list[dict[str, Any]] = []
-    for r in rows:
-        result.append({
-            "trade_time": int(r[0]),
-            "price": price_from_storage(int(r[1])),
-            "value": price_from_storage(int(r[2])),
-        })
-    return result
-
-
 async def get_gold_order_book_micro_price_intraday(
     instrument_code: str,
     trade_date: date,

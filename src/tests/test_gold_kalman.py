@@ -4,93 +4,49 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.admin.gold.analytics_views import GoldKalmanArbitrageChartView
-from src.analytics.gold_kalman import run_gold_kalman_filter
+from src.admin.gold.analytics_views import GoldNormalizedSpreadChartView
 from src.main import app
 
 
-def test_gold_kalman_views_properties() -> None:
-    assert GoldKalmanArbitrageChartView.category == "Gold Analytics"
-    assert GoldKalmanArbitrageChartView.identity == "gold_kalman_arbitrage"
-
-
-def test_run_gold_kalman_filter_mathematics() -> None:
-    times = [120000 + i * 5 for i in range(100)]
-    prices2 = [100.0 + i * 0.1 for i in range(100)]
-    # p1 = 2 * p2 with slight noise
-    prices1 = [2.0 * p + (0.5 if i % 2 == 0 else -0.5) for i, p in enumerate(prices2)]
-
-    res = run_gold_kalman_filter(prices1, prices2, times)
-    assert len(res["times"]) == 100
-    assert len(res["beta"]) == 100
-    assert len(res["z_score"]) == 100
-    assert len(res["p1_norm"]) == 100
-    assert len(res["p2_norm"]) == 100
-    # Initial normalized prices start at 100
-    assert res["p1_norm"][0] == 100.0
-    assert res["p2_norm"][0] == 100.0
-    # Z-scores are bounded in a reasonable range
-    for z in res["z_score"]:
-        assert -10.0 <= z <= 10.0
-
-
-def test_run_gold_kalman_filter_empty() -> None:
-    res = run_gold_kalman_filter([], [], [])
-    assert res["times"] == []
-    assert res["z_score"] == []
+def test_gold_normalized_spread_view_properties() -> None:
+    assert GoldNormalizedSpreadChartView.category == "Gold Analytics"
+    assert GoldNormalizedSpreadChartView.identity == "gold_normalized_spread"
 
 
 @pytest.mark.asyncio
 @patch("src.routes.gold_analytics.get_gold_order_book_micro_price_intraday", new_callable=AsyncMock)
-async def test_api_gold_kalman_arbitrage_micro_price(mock_get_ob) -> None:
+async def test_api_gold_normalized_spread_intraday(mock_get_ob) -> None:
     mock_get_ob.side_effect = [
         [
-            {"trade_time": 120000, "price": 1000.0, "weighted_bid": 999.0, "weighted_ask": 1001.0},
-            {"trade_time": 120005, "price": 1010.0, "weighted_bid": 1009.0, "weighted_ask": 1011.0},
+            {"trade_time": 120000, "best_bid": 1000.0, "best_ask": 1001.0},
+            {"trade_time": 120005, "best_bid": 1010.0, "best_ask": 1011.0},
         ],
         [
-            {"trade_time": 120000, "price": 500.0, "weighted_bid": 499.0, "weighted_ask": 501.0},
-            {"trade_time": 120005, "price": 505.0, "weighted_bid": 504.0, "weighted_ask": 506.0},
+            {"trade_time": 120000, "best_bid": 500.0, "best_ask": 501.0},
+            {"trade_time": 120005, "best_bid": 505.0, "best_ask": 506.0},
         ],
     ]
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         res = await ac.get(
-            "/api/v1/gold-analytics/kalman-arbitrage/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&price_mode=micro"
+            "/api/v1/gold-analytics/normalized-spread/intraday?instrument1=G1&instrument2=G2&date=2026-08-01"
         )
         assert res.status_code == 200
         data = res.json()
         assert data["trade_date"] == "2026-08-01"
-        assert data["price_mode"] == "micro"
-        assert len(data["results"]["times"]) == 2
-        assert len(data["results"]["z_score"]) == 2
-        assert len(data["results"]["beta"]) == 2
-        assert len(data["results"]["p1_bid_norm"]) == 2
-        assert len(data["results"]["p1_ask_norm"]) == 2
 
+        pts1 = data["instrument1"]["points"]
+        pts2 = data["instrument2"]["points"]
+        assert len(pts1) == 2
+        assert len(pts2) == 2
 
-@pytest.mark.asyncio
-@patch("src.routes.gold_analytics.get_gold_order_book_micro_price_intraday", new_callable=AsyncMock)
-async def test_api_gold_kalman_arbitrage_best_price(mock_get_ob) -> None:
-    mock_get_ob.side_effect = [
-        [
-            {"trade_time": 120000, "price": 1000.0, "best_bid": 999.0, "best_ask": 1001.0},
-            {"trade_time": 120005, "price": 1010.0, "best_bid": 1009.0, "best_ask": 1011.0},
-        ],
-        [
-            {"trade_time": 120000, "price": 500.0, "best_bid": 499.0, "best_ask": 501.0},
-            {"trade_time": 120005, "price": 505.0, "best_bid": 504.0, "best_ask": 506.0},
-        ],
-    ]
+        # First point log return starts at 0.0
+        assert pts1[0]["bid"] == 0.0
+        assert pts1[0]["ask"] == 0.0
+        assert pts2[0]["bid"] == 0.0
+        assert pts2[0]["ask"] == 0.0
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        res = await ac.get(
-            "/api/v1/gold-analytics/kalman-arbitrage/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&price_mode=best"
-        )
-        assert res.status_code == 200
-        data = res.json()
-        assert data["trade_date"] == "2026-08-01"
-        assert data["price_mode"] == "best"
-        assert len(data["results"]["times"]) == 2
+        # Second point log return is positive (price went up)
+        assert pts1[1]["bid"] > 0
+        assert pts2[1]["bid"] > 0

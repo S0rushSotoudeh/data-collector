@@ -24,8 +24,8 @@ from src.admin.run_views import (
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.gold.views import GoldInstrumentAdmin, GoldOrderBookView, GoldTradesView
 from src.admin.gold.analytics_views import (
-    GoldPriceComparisonChartView,
-    GoldKalmanArbitrageChartView,
+    GoldBestQuotesChartView,
+    GoldNormalizedSpreadChartView,
 )
 from src.admin.task_views import CeleryTasksView
 from src.admin.ime.views import ImeProducerAdmin, ImeProductAdmin, ImeTradesView, ImePriceVolumeView
@@ -55,8 +55,8 @@ def create_admin(
     admin.add_view(GoldTradesView)
 
     # Gold Analytics
-    admin.add_view(GoldPriceComparisonChartView)
-    admin.add_view(GoldKalmanArbitrageChartView)
+    admin.add_view(GoldBestQuotesChartView)
+    admin.add_view(GoldNormalizedSpreadChartView)
 
     # Bond Market
     admin.add_view(BondInstrumentAdmin)

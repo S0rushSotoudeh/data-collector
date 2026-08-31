@@ -16,7 +16,7 @@ CHART_TEMPLATES = [
     "bonds/bond_trades_ranking.html",
     "ime/price_volume.html",
     "gold/gold_price_comparison.html",
-    "gold/gold_kalman_arbitrage.html",
+    "gold/gold_normalized_spread.html",
 ]
 
 
@@ -118,5 +118,9 @@ def test_chart_pages_use_shared_support(template_name):
 
     assert '{% include "shared/echarts_support.html" %}' in source
     assert "AdminCharts.init" in source
-    assert "AdminCharts.dualAxisZoom(" in source
     assert "echarts.init" not in source
+
+    # Single-axis charts don't need dualAxisZoom
+    SINGLE_AXIS = {"gold/gold_normalized_spread.html"}
+    if template_name not in SINGLE_AXIS:
+        assert "AdminCharts.dualAxisZoom(" in source

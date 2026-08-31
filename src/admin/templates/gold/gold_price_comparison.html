@@ -149,74 +149,59 @@
     var sym2 = getSelectedSymbol(inst2El);
 
     if (chartTitleEl) {
-      chartTitleEl.textContent = sym1 + " vs " + sym2 + " — Real Price Comparison";
+      chartTitleEl.textContent = sym1 + " vs " + sym2 + " — Raw Order Book";
     }
 
-    var series1Data = [];
-    var series2Data = [];
     var times = [];
     var timeMap = {};
+
+    // Build series data: raw best_bid / best_ask per instrument (no forward fill)
+    var s1BidData = [], s1AskData = [], s2BidData = [], s2AskData = [];
+    // Fallback for daily mode (single price per day)
+    var series1Data = [], series2Data = [];
 
     if (isIntraday) {
       var pts1 = (data.instrument1 && data.instrument1.points) || [];
       var pts2 = (data.instrument2 && data.instrument2.points) || [];
 
       pts1.forEach(function (p) {
-        var tStr = formatTime(p.trade_time);
-        if (!timeMap[tStr]) { timeMap[tStr] = {}; times.push(tStr); }
-        timeMap[tStr].p1 = p.price;
+        var bid = p.best_bid || 0, ask = p.best_ask || 0;
+        if (bid > 0 || ask > 0) {
+          var tStr = formatTime(p.trade_time);
+          if (!timeMap[tStr]) { timeMap[tStr] = true; times.push(tStr); }
+          if (bid > 0) s1BidData.push([tStr, bid]);
+          if (ask > 0) s1AskData.push([tStr, ask]);
+        }
       });
       pts2.forEach(function (p) {
-        var tStr = formatTime(p.trade_time);
-        if (!timeMap[tStr]) { timeMap[tStr] = {}; times.push(tStr); }
-        timeMap[tStr].p2 = p.price;
+        var bid = p.best_bid || 0, ask = p.best_ask || 0;
+        if (bid > 0 || ask > 0) {
+          var tStr = formatTime(p.trade_time);
+          if (!timeMap[tStr]) { timeMap[tStr] = true; times.push(tStr); }
+          if (bid > 0) s2BidData.push([tStr, bid]);
+          if (ask > 0) s2AskData.push([tStr, ask]);
+        }
       });
       times.sort();
-
-      var lastP1 = null;
-      var lastP2 = null;
-      for (var i = 0; i < times.length; i++) {
-        if (timeMap[times[i]].p1 !== undefined && lastP1 === null) lastP1 = timeMap[times[i]].p1;
-        if (timeMap[times[i]].p2 !== undefined && lastP2 === null) lastP2 = timeMap[times[i]].p2;
-        if (lastP1 !== null && lastP2 !== null) break;
-      }
-
-      times.forEach(function (t) {
-        if (timeMap[t].p1 !== undefined) lastP1 = timeMap[t].p1;
-        if (timeMap[t].p2 !== undefined) lastP2 = timeMap[t].p2;
-        series1Data.push([t, lastP1]);
-        series2Data.push([t, lastP2]);
-      });
     } else {
       var days1 = (data.instrument1 && data.instrument1.days) || [];
       var days2 = (data.instrument2 && data.instrument2.days) || [];
 
       days1.forEach(function (d) {
-        var dt = String(d.trade_date);
-        if (!timeMap[dt]) { timeMap[dt] = {}; times.push(dt); }
-        timeMap[dt].p1 = d.value;
+        if (d.value && d.value > 0) {
+          var dt = String(d.trade_date);
+          if (!timeMap[dt]) { timeMap[dt] = true; times.push(dt); }
+          series1Data.push([dt, d.value]);
+        }
       });
       days2.forEach(function (d) {
-        var dt = String(d.trade_date);
-        if (!timeMap[dt]) { timeMap[dt] = {}; times.push(dt); }
-        timeMap[dt].p2 = d.value;
+        if (d.value && d.value > 0) {
+          var dt = String(d.trade_date);
+          if (!timeMap[dt]) { timeMap[dt] = true; times.push(dt); }
+          series2Data.push([dt, d.value]);
+        }
       });
       times.sort();
-
-      var lastP1 = null;
-      var lastP2 = null;
-      for (var i = 0; i < times.length; i++) {
-        if (timeMap[times[i]].p1 !== undefined && lastP1 === null) lastP1 = timeMap[times[i]].p1;
-        if (timeMap[times[i]].p2 !== undefined && lastP2 === null) lastP2 = timeMap[times[i]].p2;
-        if (lastP1 !== null && lastP2 !== null) break;
-      }
-
-      times.forEach(function (t) {
-        if (timeMap[t].p1 !== undefined) lastP1 = timeMap[t].p1;
-        if (timeMap[t].p2 !== undefined) lastP2 = timeMap[t].p2;
-        series1Data.push([t, lastP1]);
-        series2Data.push([t, lastP2]);
-      });
     }
 
     if (times.length === 0) {
@@ -225,86 +210,96 @@
       return;
     }
 
-    chart.setOption({
-      title: {
-        text: "Real Trade Prices (" + (isIntraday ? data.trade_date : (data.from + " to " + data.to)) + ")",
-        left: "center",
-        top: 10
-      },
-      tooltip: {
-        trigger: "axis",
-        axisPointer: {
-          type: "cross",
-          crossStyle: { color: "#999" }
-        },
-        formatter: function (params) {
-          if (!params || !params.length) return "";
-          var res = "<strong>" + params[0].value[0] + "</strong><br/>";
-          var v1 = null, v2 = null;
-          params.forEach(function (item) {
-            var val = item.value[1];
-            if (item.seriesIndex === 0) v1 = val;
-            if (item.seriesIndex === 1) v2 = val;
-            var formatted = val !== null && val !== undefined ? Number(val).toLocaleString() + " IRR" : "—";
-            res += item.marker + " " + item.seriesName + ": <strong>" + formatted + "</strong><br/>";
-          });
-          if (v1 !== null && v2 !== null) {
-            var diff = v1 - v2;
-            var diffSign = diff > 0 ? "+" : "";
-            res += "<span style='color:#67c23a;'>● Difference: <strong>" + diffSign + Number(diff).toLocaleString() + " IRR</strong></span>";
+    if (isIntraday) {
+      if (s1BidData.length === 0 && s1AskData.length === 0 && s2BidData.length === 0 && s2AskData.length === 0) {
+        AdminCharts.showEmpty(chart, "No order book quotes found for selected date and instruments.");
+        setStatus("No order book data found.", true);
+        return;
+      }
+      chart.setOption({
+        animation: false,
+        title: { text: sym1 + " vs " + sym2 + " — Raw Order Book (" + data.trade_date + ")", left: "center", top: 10 },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "cross", crossStyle: { color: "#999" } },
+          formatter: function (params) {
+            if (!params || !params.length) return "";
+            var res = "<strong>" + params[0].value[0] + "</strong><br/>";
+            params.forEach(function (item) {
+              var val = item.value[1];
+              var formatted = val != null ? Number(val).toLocaleString() + " IRR" : "—";
+              res += item.marker + " " + item.seriesName + ": <strong>" + formatted + "</strong><br/>";
+            });
+            return res;
           }
-          return res;
-        }
-      },
-      legend: { data: [sym1, sym2], top: 35 },
-      grid: { left: "4%", right: "4%", bottom: "12%", top: "16%", containLabel: true },
-      dataZoom: [
-        { type: "inside", start: 0, end: 100 },
-        { type: "slider", start: 0, end: 100, bottom: 5 }
-      ],
-      xAxis: { type: "category", data: times, boundaryGap: false },
-      yAxis: [
-        {
-          type: "value",
-          name: sym1 + " (IRR)",
-          scale: true,
-          axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } }
         },
-        {
-          type: "value",
-          name: sym2 + " (IRR)",
-          scale: true,
-          position: "right",
-          axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } }
-        }
-      ],
-      series: [
-        {
-          name: sym1,
-          type: "line",
-          yAxisIndex: 0,
-          data: series1Data,
-          smooth: false,
-          connectNulls: true,
-          showSymbol: false,
-          lineStyle: { width: 2, color: "#e6a23c" },
-          itemStyle: { color: "#e6a23c" }
+        legend: { data: [sym1 + " Bid", sym1 + " Ask", sym2 + " Bid", sym2 + " Ask"], top: 35 },
+        grid: { left: "4%", right: "4%", bottom: "12%", top: "16%", containLabel: true },
+        dataZoom: [
+          { type: "inside", start: 0, end: 100 },
+          { type: "slider", start: 0, end: 100, bottom: 5 }
+        ],
+        xAxis: { type: "category", data: times, boundaryGap: false },
+        yAxis: [
+          { type: "value", name: sym1 + " (IRR)", scale: true, axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } } },
+          { type: "value", name: sym2 + " (IRR)", scale: true, position: "right", axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } } }
+        ],
+        series: [
+          { name: sym1 + " Bid", type: "line", yAxisIndex: 0, data: s1BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#fab005" }, itemStyle: { color: "#fab005" } },
+          { name: sym1 + " Ask", type: "line", yAxisIndex: 0, data: s1AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#fa5252", type: "dashed" }, itemStyle: { color: "#fa5252" } },
+          { name: sym2 + " Bid", type: "line", yAxisIndex: 1, data: s2BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#15aabf" }, itemStyle: { color: "#15aabf" } },
+          { name: sym2 + " Ask", type: "line", yAxisIndex: 1, data: s2AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#228be6", type: "dashed" }, itemStyle: { color: "#228be6" } }
+        ]
+      }, true);
+      setStatus("Loaded " + s1BidData.length + " bid / " + s1AskData.length + " ask ticks for " + sym1 + " and " + s2BidData.length + "/" + s2AskData.length + " for " + sym2 + ".");
+    } else {
+      if (series1Data.length === 0 && series2Data.length === 0) {
+        AdminCharts.showEmpty(chart, "No trade data found for selected range.");
+        setStatus("No data found.", true);
+        return;
+      }
+      chart.setOption({
+        animation: false,
+        title: { text: sym1 + " vs " + sym2 + " (" + data.from + " → " + data.to + ")", left: "center", top: 10 },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "cross", crossStyle: { color: "#999" } },
+          formatter: function (params) {
+            if (!params || !params.length) return "";
+            var res = "<strong>" + params[0].value[0] + "</strong><br/>";
+            var v1 = null, v2 = null;
+            params.forEach(function (item) {
+              var val = item.value[1];
+              if (item.seriesIndex === 0) v1 = val;
+              if (item.seriesIndex === 1) v2 = val;
+              var formatted = val != null ? Number(val).toLocaleString() + " IRR" : "—";
+              res += item.marker + " " + item.seriesName + ": <strong>" + formatted + "</strong><br/>";
+            });
+            if (v1 !== null && v2 !== null) {
+              var diff = v1 - v2;
+              res += "<span style='color:#67c23a;'>● Diff: <strong>" + (diff > 0 ? "+" : "") + Number(diff).toLocaleString() + " IRR</strong></span>";
+            }
+            return res;
+          }
         },
-        {
-          name: sym2,
-          type: "line",
-          yAxisIndex: 1,
-          data: series2Data,
-          smooth: false,
-          connectNulls: true,
-          showSymbol: false,
-          lineStyle: { width: 2, color: "#409eff" },
-          itemStyle: { color: "#409eff" }
-        }
-      ]
-    }, true);
-
-    setStatus("Loaded " + times.length + " data points successfully.");
+        legend: { data: [sym1, sym2], top: 35 },
+        grid: { left: "4%", right: "4%", bottom: "12%", top: "16%", containLabel: true },
+        dataZoom: [
+          { type: "inside", start: 0, end: 100 },
+          { type: "slider", start: 0, end: 100, bottom: 5 }
+        ],
+        xAxis: { type: "category", data: times, boundaryGap: false },
+        yAxis: [
+          { type: "value", name: sym1 + " (IRR)", scale: true, axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } } },
+          { type: "value", name: sym2 + " (IRR)", scale: true, position: "right", axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } } }
+        ],
+        series: [
+          { name: sym1, type: "line", yAxisIndex: 0, data: series1Data, showSymbol: false, connectNulls: false, lineStyle: { width: 2, color: "#e6a23c" }, itemStyle: { color: "#e6a23c" } },
+          { name: sym2, type: "line", yAxisIndex: 1, data: series2Data, showSymbol: false, connectNulls: false, lineStyle: { width: 2, color: "#409eff" }, itemStyle: { color: "#409eff" } }
+        ]
+      }, true);
+      setStatus("Loaded " + series1Data.length + " days.");
+    }
   }
 
   async function loadData() {

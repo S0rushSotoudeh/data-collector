@@ -10,15 +10,15 @@ from src.db.models.stock import StockInstrument
 from src.db.session import SessionLocal
 
 
-class GoldPriceComparisonChartView(BaseView):
-    name = "Gold Price Comparison"
-    identity = "gold-price-comparison"
+class GoldBestQuotesChartView(BaseView):
+    name = "Gold Best Quotes"
+    identity = "gold-best-quotes"
     icon = "fa-solid fa-chart-line"
     category = "Gold Analytics"
     category_icon = "fa-solid fa-coins"
 
-    @expose("/gold-price-comparison", methods=["GET"])
-    async def gold_price_comparison(self, request: Request) -> HTMLResponse:
+    @expose("/gold-best-quotes", methods=["GET"])
+    async def gold_best_quotes(self, request: Request) -> HTMLResponse:
         instruments: list[dict[str, str]] = []
         with SessionLocal() as session:
             stmt = (
@@ -37,23 +37,23 @@ class GoldPriceComparisonChartView(BaseView):
         ctx: dict[str, Any] = {
             "request": request,
             "admin": self._admin_ref,
-            "title": "Gold Price Comparison",
-            "subtitle": "Compare real trade prices of two gold ETF instruments on one chart",
+            "title": "Gold Best Quotes",
+            "subtitle": "Raw Best Bid & Best Ask prices for two gold ETF instruments",
             "instruments": instruments,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
         return HTMLResponse(_render("gold/gold_price_comparison.html", ctx))
 
 
-class GoldKalmanArbitrageChartView(BaseView):
-    name = "Gold Kalman Arbitrage"
-    identity = "gold-kalman-arbitrage"
-    icon = "fa-solid fa-calculator"
+class GoldNormalizedSpreadChartView(BaseView):
+    name = "Gold Normalized Spread"
+    identity = "gold-normalized-spread"
+    icon = "fa-solid fa-wave-square"
     category = "Gold Analytics"
     category_icon = "fa-solid fa-coins"
 
-    @expose("/gold-kalman-arbitrage", methods=["GET"])
-    async def gold_kalman_arbitrage(self, request: Request) -> HTMLResponse:
+    @expose("/gold-normalized-spread", methods=["GET"])
+    async def gold_normalized_spread(self, request: Request) -> HTMLResponse:
         instruments: list[dict[str, str]] = []
         with SessionLocal() as session:
             stmt = (
@@ -72,9 +72,9 @@ class GoldKalmanArbitrageChartView(BaseView):
         ctx: dict[str, Any] = {
             "request": request,
             "admin": self._admin_ref,
-            "title": "Gold Kalman Filter Arbitrage",
-            "subtitle": "Online Kalman filter dynamic hedge ratio, latent spread & normalized Z-score",
+            "title": "Gold Normalized Spread",
+            "subtitle": "Log-return normalized Best Bid/Ask quotes — ln(P/P₀) from session open",
             "instruments": instruments,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("gold/gold_kalman_arbitrage.html", ctx))
+        return HTMLResponse(_render("gold/gold_normalized_spread.html", ctx))

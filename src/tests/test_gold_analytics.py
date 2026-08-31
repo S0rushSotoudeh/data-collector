@@ -4,21 +4,21 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.admin.gold.analytics_views import GoldPriceComparisonChartView
+from src.admin.gold.analytics_views import GoldBestQuotesChartView
 from src.main import app
 
 
 def test_gold_analytics_views_properties() -> None:
-    assert GoldPriceComparisonChartView.category == "Gold Analytics"
-    assert GoldPriceComparisonChartView.identity == "gold_price_comparison"
+    assert GoldBestQuotesChartView.category == "Gold Analytics"
+    assert GoldBestQuotesChartView.identity == "gold_best_quotes"
 
 
 @pytest.mark.asyncio
-@patch("src.routes.gold_analytics.get_gold_trades_comparison_intraday", new_callable=AsyncMock)
+@patch("src.routes.gold_analytics.get_gold_order_book_micro_price_intraday", new_callable=AsyncMock)
 async def test_api_gold_compare_intraday(mock_get_intraday) -> None:
     mock_get_intraday.side_effect = [
-        [{"trade_time": 93000, "price": 1000.0, "value": 50000.0}],
-        [{"trade_time": 93000, "price": 1050.0, "value": 60000.0}],
+        [{"trade_time": 120000, "price": 1000.0, "best_bid": 999.0, "best_ask": 1001.0}],
+        [{"trade_time": 120000, "price": 1050.0, "best_bid": 1049.0, "best_ask": 1051.0}],
     ]
 
     transport = ASGITransport(app=app)
