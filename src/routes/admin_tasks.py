@@ -10,6 +10,8 @@ from src.services.operation_runs import enqueue_task, get_run_by_task_id, run_to
 from src.tasks import (
     backfill_bond_order_books_task,
     backfill_bond_trades_task,
+    backfill_gold_order_books_task,
+    backfill_gold_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
     backfill_stock_order_books_task,
@@ -174,6 +176,18 @@ async def api_backfill_stock_order_books(request: Request, body: BackfillRequest
 async def api_backfill_stock_trades(request: Request, body: BackfillRequest):
     await _require_admin(request)
     return _submitted(backfill_stock_trades_task, request, body=body)
+
+
+@router.post("/backfill-gold-order-books", response_model=TaskSubmittedResponse)
+async def api_backfill_gold_order_books(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_gold_order_books_task, request, body=body)
+
+
+@router.post("/backfill-gold-trades", response_model=TaskSubmittedResponse)
+async def api_backfill_gold_trades(request: Request, body: BackfillRequest):
+    await _require_admin(request)
+    return _submitted(backfill_gold_trades_task, request, body=body)
 
 
 @router.post("/backfill-option-order-books", response_model=TaskSubmittedResponse)
