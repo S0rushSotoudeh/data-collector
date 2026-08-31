@@ -20,9 +20,9 @@ def test_gold_views_category_and_identity() -> None:
     assert GoldInstrumentAdmin.category == "Gold Market"
     assert GoldInstrumentAdmin.identity == "gold-instrument"
     assert GoldOrderBookView.category == "Gold Market"
-    assert GoldOrderBookView.identity == "gold-order-book"
+    assert GoldOrderBookView.identity == "gold_order_book_list"
     assert GoldTradesView.category == "Gold Market"
-    assert GoldTradesView.identity == "gold-trades"
+    assert GoldTradesView.identity == "gold_trades_list"
 
 
 @patch("src.admin.gold.views.count_stock_order_book", new_callable=AsyncMock)

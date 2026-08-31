@@ -4,6 +4,8 @@ from sqladmin import ModelView, expose
 from starlette.requests import Request
 from starlette.responses import HTMLResponse
 
+from sqlmodel import select
+
 from src.admin._render import _parse_date, _parse_int
 from src.admin._views import ClickHouseListView
 from src.db.clickhouse import price_to_storage
@@ -14,6 +16,32 @@ from src.db.clickhouse.stock import (
     get_stock_trades_paginated,
 )
 from src.db.models.stock import StockInstrument
+from src.db.session import SessionLocal
+
+
+def _resolve_instrument_code(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    raw = raw.strip()
+    if raw.isdigit():
+        return raw
+    normalized = raw.replace("ی", "ي").replace("ک", "ك")
+    with SessionLocal() as session:
+        inst = (
+            session.execute(
+                select(StockInstrument).where(
+                    (StockInstrument.symbol == raw)
+                    | (StockInstrument.symbol == normalized)
+                    | (StockInstrument.symbol.ilike(f"%{raw}%"))
+                    | (StockInstrument.symbol.ilike(f"%{normalized}%"))
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if inst:
+            return inst.instrument_code
+    return raw
 
 
 class GoldInstrumentAdmin(ModelView, model=StockInstrument):
@@ -83,7 +111,7 @@ class GoldOrderBookView(ClickHouseListView):
         }
 
     async def fetch(self, filters: dict[str, Any], offset: int, limit: int) -> tuple[int, list[dict]]:
-        instrument_code = filters["instrument_code"] or None
+        instrument_code = _resolve_instrument_code(filters["instrument_code"])
         trade_date_str = filters["trade_date"]
         trade_date = _parse_date(trade_date_str) if trade_date_str else None
         depth_level = filters["depth_level"]
@@ -130,7 +158,7 @@ class GoldTradesView(ClickHouseListView):
         }
 
     async def fetch(self, filters: dict[str, Any], offset: int, limit: int) -> tuple[int, list[dict]]:
-        instrument_code = filters["instrument_code"] or None
+        instrument_code = _resolve_instrument_code(filters["instrument_code"])
         trade_date_str = filters["trade_date"]
         trade_date = _parse_date(trade_date_str) if trade_date_str else None
         min_price_raw = filters["min_price"]

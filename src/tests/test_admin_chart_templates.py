@@ -15,6 +15,8 @@ CHART_TEMPLATES = [
     "bonds/bond_trades_values.html",
     "bonds/bond_trades_ranking.html",
     "ime/price_volume.html",
+    "gold/gold_price_comparison.html",
+    "gold/gold_kalman_arbitrage.html",
 ]
 
 

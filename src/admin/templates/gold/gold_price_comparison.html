@@ -1,0 +1,359 @@
+{% extends "shared/admin_base.html" %}
+{% block custom_styles %}
+<style>
+  .filter-card { margin-bottom: 1.5rem; }
+  .filter-card .card-body { padding: 1rem 1.5rem; }
+  .chart-card { height: 580px; }
+  .chart-card .card-body { padding: 0; }
+  #gpc-chart { width: 100%; height: 580px; }
+  .empty-state {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: var(--tblr-muted, #64748b); font-size: .95rem;
+  }
+  .mode-group .btn { cursor: pointer; }
+  .field-intraday, .field-daily { display: none; }
+  .field-intraday.active, .field-daily.active { display: flex; }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="card filter-card">
+  <div class="card-header"><h3 class="card-title">Gold Price Comparison Filters</h3></div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label">Mode</label>
+        <div class="btn-group mode-group w-100" role="group">
+          <input type="radio" class="btn-check" name="gpc-mode" id="gpc-mode-intraday" value="intraday" checked>
+          <label class="btn btn-outline-primary" for="gpc-mode-intraday">Intraday</label>
+          <input type="radio" class="btn-check" name="gpc-mode" id="gpc-mode-daily" value="daily">
+          <label class="btn btn-outline-primary" for="gpc-mode-daily">Daily</label>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Instrument 1</label>
+        <select id="gpc-instrument-1" class="form-select" name="instrument1">
+          {% if instruments|length == 0 %}
+            <option value="">— no instruments —</option>
+          {% else %}
+            {% for i in instruments %}
+            <option value="{{ i.instrument_code }}">{{ i.symbol }}{% if i.name_fa %} ({{ i.name_fa }}){% endif %}</option>
+            {% endfor %}
+          {% endif %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Instrument 2</label>
+        <select id="gpc-instrument-2" class="form-select" name="instrument2">
+          {% if instruments|length == 0 %}
+            <option value="">— no instruments —</option>
+          {% else %}
+            {% for i in instruments %}
+            <option value="{{ i.instrument_code }}" {% if loop.index == 2 %}selected{% endif %}>{{ i.symbol }}{% if i.name_fa %} ({{ i.name_fa }}){% endif %}</option>
+            {% endfor %}
+          {% endif %}
+        </select>
+      </div>
+
+      <div class="col-md-2 field-intraday active">
+        <label class="form-label">Date</label>
+        <input type="date" id="gpc-date" class="form-control" name="date">
+      </div>
+
+      <div class="col-md-2 field-daily">
+        <label class="form-label">From date</label>
+        <input type="date" id="gpc-from-date" class="form-control" name="from">
+      </div>
+      <div class="col-md-2 field-daily">
+        <label class="form-label">To date</label>
+        <input type="date" id="gpc-to-date" class="form-control" name="to">
+      </div>
+
+      <div class="col-md-2 align-self-end">
+        <button type="button" id="gpc-load" class="btn btn-primary w-100">Load Chart</button>
+      </div>
+    </div>
+    <div class="row mt-2">
+      <div class="col-12 text-muted small" id="gpc-status">Select instruments and date, then click Load Chart.</div>
+    </div>
+  </div>
+</div>
+
+<div class="card chart-card">
+  <div class="card-header"><h3 class="card-title" id="gpc-chart-title">Real Price Comparison</h3></div>
+  <div class="card-body">
+    <div id="gpc-chart"></div>
+  </div>
+</div>
+
+{% endblock %}
+{% block custom_js %}
+{% include "shared/echarts_support.html" %}
+<script>
+(function () {
+  "use strict";
+
+  var chart = null;
+
+  var chartEl = document.getElementById("gpc-chart");
+  var chartTitleEl = document.getElementById("gpc-chart-title");
+  var statusEl = document.getElementById("gpc-status");
+  var modeIntraday = document.getElementById("gpc-mode-intraday");
+  var modeDaily = document.getElementById("gpc-mode-daily");
+  var inst1El = document.getElementById("gpc-instrument-1");
+  var inst2El = document.getElementById("gpc-instrument-2");
+  var dateEl = document.getElementById("gpc-date");
+  var fromDateEl = document.getElementById("gpc-from-date");
+  var toDateEl = document.getElementById("gpc-to-date");
+  var loadBtn = document.getElementById("gpc-load");
+
+  var todayStr = new Date().toISOString().slice(0, 10);
+  if (dateEl && !dateEl.value) dateEl.value = todayStr;
+  if (fromDateEl && !fromDateEl.value) {
+    var past = new Date(Date.now() - 30 * 86400000);
+    fromDateEl.value = past.toISOString().slice(0, 10);
+  }
+  if (toDateEl && !toDateEl.value) toDateEl.value = todayStr;
+
+  function updateMode() {
+    var isIntraday = modeIntraday.checked;
+    document.querySelectorAll(".field-intraday").forEach(function (el) {
+      el.classList.toggle("active", isIntraday);
+    });
+    document.querySelectorAll(".field-daily").forEach(function (el) {
+      el.classList.toggle("active", !isIntraday);
+    });
+  }
+
+  modeIntraday.addEventListener("change", updateMode);
+  modeDaily.addEventListener("change", updateMode);
+
+  function getSelectedSymbol(selectEl) {
+    if (!selectEl || selectEl.selectedIndex < 0) return "";
+    return selectEl.options[selectEl.selectedIndex].text;
+  }
+
+  function formatTime(t) {
+    var s = String(t).padStart(6, "0");
+    return s.slice(0, 2) + ":" + s.slice(2, 4) + ":" + s.slice(4, 6);
+  }
+
+  function setStatus(msg, isError) {
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.className = "col-12 small " + (isError ? "text-danger" : "text-muted");
+  }
+
+  function renderChart(data, isIntraday) {
+    var sym1 = getSelectedSymbol(inst1El);
+    var sym2 = getSelectedSymbol(inst2El);
+
+    if (chartTitleEl) {
+      chartTitleEl.textContent = sym1 + " vs " + sym2 + " — Real Price Comparison";
+    }
+
+    var series1Data = [];
+    var series2Data = [];
+    var times = [];
+    var timeMap = {};
+
+    if (isIntraday) {
+      var pts1 = (data.instrument1 && data.instrument1.points) || [];
+      var pts2 = (data.instrument2 && data.instrument2.points) || [];
+
+      pts1.forEach(function (p) {
+        var tStr = formatTime(p.trade_time);
+        if (!timeMap[tStr]) { timeMap[tStr] = {}; times.push(tStr); }
+        timeMap[tStr].p1 = p.price;
+      });
+      pts2.forEach(function (p) {
+        var tStr = formatTime(p.trade_time);
+        if (!timeMap[tStr]) { timeMap[tStr] = {}; times.push(tStr); }
+        timeMap[tStr].p2 = p.price;
+      });
+      times.sort();
+
+      var lastP1 = null;
+      var lastP2 = null;
+      for (var i = 0; i < times.length; i++) {
+        if (timeMap[times[i]].p1 !== undefined && lastP1 === null) lastP1 = timeMap[times[i]].p1;
+        if (timeMap[times[i]].p2 !== undefined && lastP2 === null) lastP2 = timeMap[times[i]].p2;
+        if (lastP1 !== null && lastP2 !== null) break;
+      }
+
+      times.forEach(function (t) {
+        if (timeMap[t].p1 !== undefined) lastP1 = timeMap[t].p1;
+        if (timeMap[t].p2 !== undefined) lastP2 = timeMap[t].p2;
+        series1Data.push([t, lastP1]);
+        series2Data.push([t, lastP2]);
+      });
+    } else {
+      var days1 = (data.instrument1 && data.instrument1.days) || [];
+      var days2 = (data.instrument2 && data.instrument2.days) || [];
+
+      days1.forEach(function (d) {
+        var dt = String(d.trade_date);
+        if (!timeMap[dt]) { timeMap[dt] = {}; times.push(dt); }
+        timeMap[dt].p1 = d.value;
+      });
+      days2.forEach(function (d) {
+        var dt = String(d.trade_date);
+        if (!timeMap[dt]) { timeMap[dt] = {}; times.push(dt); }
+        timeMap[dt].p2 = d.value;
+      });
+      times.sort();
+
+      var lastP1 = null;
+      var lastP2 = null;
+      for (var i = 0; i < times.length; i++) {
+        if (timeMap[times[i]].p1 !== undefined && lastP1 === null) lastP1 = timeMap[times[i]].p1;
+        if (timeMap[times[i]].p2 !== undefined && lastP2 === null) lastP2 = timeMap[times[i]].p2;
+        if (lastP1 !== null && lastP2 !== null) break;
+      }
+
+      times.forEach(function (t) {
+        if (timeMap[t].p1 !== undefined) lastP1 = timeMap[t].p1;
+        if (timeMap[t].p2 !== undefined) lastP2 = timeMap[t].p2;
+        series1Data.push([t, lastP1]);
+        series2Data.push([t, lastP2]);
+      });
+    }
+
+    if (times.length === 0) {
+      AdminCharts.showEmpty(chart, "No trades found for selected date and instruments.");
+      setStatus("No trade records found for the selection.");
+      return;
+    }
+
+    chart.setOption({
+      title: {
+        text: "Real Trade Prices (" + (isIntraday ? data.trade_date : (data.from + " to " + data.to)) + ")",
+        left: "center",
+        top: 10
+      },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: {
+          type: "cross",
+          crossStyle: { color: "#999" }
+        },
+        formatter: function (params) {
+          if (!params || !params.length) return "";
+          var res = "<strong>" + params[0].value[0] + "</strong><br/>";
+          var v1 = null, v2 = null;
+          params.forEach(function (item) {
+            var val = item.value[1];
+            if (item.seriesIndex === 0) v1 = val;
+            if (item.seriesIndex === 1) v2 = val;
+            var formatted = val !== null && val !== undefined ? Number(val).toLocaleString() + " IRR" : "—";
+            res += item.marker + " " + item.seriesName + ": <strong>" + formatted + "</strong><br/>";
+          });
+          if (v1 !== null && v2 !== null) {
+            var diff = v1 - v2;
+            var diffSign = diff > 0 ? "+" : "";
+            res += "<span style='color:#67c23a;'>● Difference: <strong>" + diffSign + Number(diff).toLocaleString() + " IRR</strong></span>";
+          }
+          return res;
+        }
+      },
+      legend: { data: [sym1, sym2], top: 35 },
+      grid: { left: "4%", right: "4%", bottom: "12%", top: "16%", containLabel: true },
+      dataZoom: [
+        { type: "inside", start: 0, end: 100 },
+        { type: "slider", start: 0, end: 100, bottom: 5 }
+      ],
+      xAxis: { type: "category", data: times, boundaryGap: false },
+      yAxis: [
+        {
+          type: "value",
+          name: sym1 + " (IRR)",
+          scale: true,
+          axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } }
+        },
+        {
+          type: "value",
+          name: sym2 + " (IRR)",
+          scale: true,
+          position: "right",
+          axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } }
+        }
+      ],
+      series: [
+        {
+          name: sym1,
+          type: "line",
+          yAxisIndex: 0,
+          data: series1Data,
+          smooth: false,
+          connectNulls: true,
+          showSymbol: false,
+          lineStyle: { width: 2, color: "#e6a23c" },
+          itemStyle: { color: "#e6a23c" }
+        },
+        {
+          name: sym2,
+          type: "line",
+          yAxisIndex: 1,
+          data: series2Data,
+          smooth: false,
+          connectNulls: true,
+          showSymbol: false,
+          lineStyle: { width: 2, color: "#409eff" },
+          itemStyle: { color: "#409eff" }
+        }
+      ]
+    }, true);
+
+    setStatus("Loaded " + times.length + " data points successfully.");
+  }
+
+  async function loadData() {
+    var inst1 = inst1El.value;
+    var inst2 = inst2El.value;
+    if (!inst1 || !inst2) {
+      setStatus("Please select both instruments.", true);
+      return;
+    }
+
+    var isIntraday = modeIntraday.checked;
+    var url = "";
+
+    if (isIntraday) {
+      var dt = dateEl.value;
+      if (!dt) { setStatus("Please pick a date.", true); return; }
+      url = "/api/v1/gold-analytics/compare/intraday?instrument1=" + encodeURIComponent(inst1) +
+            "&instrument2=" + encodeURIComponent(inst2) +
+            "&date=" + encodeURIComponent(dt);
+    } else {
+      var frm = fromDateEl.value;
+      var to = toDateEl.value;
+      if (!frm || !to) { setStatus("Please pick both from and to dates.", true); return; }
+      url = "/api/v1/gold-analytics/compare/daily?instrument1=" + encodeURIComponent(inst1) +
+            "&instrument2=" + encodeURIComponent(inst2) +
+            "&from=" + encodeURIComponent(frm) +
+            "&to=" + encodeURIComponent(to);
+    }
+
+    setStatus("Fetching trades data from ClickHouse...");
+    try {
+      var res = await fetch(url);
+      if (!res.ok) {
+        var err = await res.json();
+        throw new Error(err.detail || ("HTTP " + res.status));
+      }
+      var json = await res.json();
+      renderChart(json, isIntraday);
+    } catch (e) {
+      setStatus("Failed to load: " + e.message, true);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    chart = AdminCharts.init(chartEl);
+    AdminCharts.dualAxisZoom(chart);
+    AdminCharts.showEmpty(chart, "Select instruments and click Load Chart.");
+    loadBtn.addEventListener("click", loadData);
+  });
+})();
+</script>
+{% endblock %}
