@@ -23,10 +23,7 @@ from src.admin.run_views import (
 )
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.gold.views import GoldInstrumentAdmin, GoldOrderBookView, GoldTradesView
-from src.admin.gold.analytics_views import (
-    GoldBestQuotesChartView,
-    GoldNormalizedSpreadChartView,
-)
+from src.admin.gold.analytics_views import GoldBestQuotesChartView
 from src.admin.task_views import CeleryTasksView
 from src.admin.ime.views import ImeProducerAdmin, ImeProductAdmin, ImeTradesView, ImePriceVolumeView
 from src.admin.bonds.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
@@ -54,25 +51,32 @@ def create_admin(
     admin.add_view(GoldOrderBookView)
     admin.add_view(GoldTradesView)
 
-    # Gold Analytics
-    admin.add_view(GoldBestQuotesChartView)
-    admin.add_view(GoldNormalizedSpreadChartView)
-
     # Bond Market
     admin.add_view(BondInstrumentAdmin)
     admin.add_view(BondOrderBookView)
     admin.add_view(BondTradesView)
+
+    # Option Market
+    admin.add_view(OptionInstrumentAdmin)
+    admin.add_view(OptionOrderBookView)
+    admin.add_view(OptionTradesView)
+
+    # IME Physical Market
+    admin.add_view(ImeProducerAdmin)
+    admin.add_view(ImeProductAdmin)
+    admin.add_view(ImeTradesView)
+    admin.add_view(ImePriceVolumeView)
+
+    # Gold Analytics
+    admin.add_view(GoldBestQuotesChartView)
+
+    # Bond Analytics
     admin.add_view(YieldCurveFitsView)
     admin.add_view(YieldCurveBondsView)
     admin.add_view(YieldCurveChartView)
     admin.add_view(YieldSpreadChartView)
     admin.add_view(BondTradesValuesChartView)
     admin.add_view(BondTradesRankingChartView)
-
-    # Option Market
-    admin.add_view(OptionInstrumentAdmin)
-    admin.add_view(OptionOrderBookView)
-    admin.add_view(OptionTradesView)
 
     # Option Analytics
     admin.add_view(OptionsAnalyticsView)
@@ -88,12 +92,6 @@ def create_admin(
     admin.add_view(ParityAnalysisSnapshotsView)
     admin.add_view(BoxSpreadSnapshotsView)
     admin.add_view(BoxSpreadPricingsView)
-
-    # IME Physical Market
-    admin.add_view(ImeProducerAdmin)
-    admin.add_view(ImeProductAdmin)
-    admin.add_view(ImeTradesView)
-    admin.add_view(ImePriceVolumeView)
 
     # Operations
     admin.add_view(CeleryTasksView)
