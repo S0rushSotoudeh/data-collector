@@ -18,7 +18,7 @@
 {% block content %}
 
 <div class="card filter-card">
-  <div class="card-header"><h3 class="card-title">Gold Price Comparison Filters</h3></div>
+  <div class="card-header"><h3 class="card-title">Gold Best Quotes Filters</h3></div>
   <div class="card-body">
     <div class="row g-3 align-items-end">
       <div class="col-md-2">
@@ -80,7 +80,7 @@
 </div>
 
 <div class="card chart-card">
-  <div class="card-header"><h3 class="card-title" id="gpc-chart-title">Real Price Comparison</h3></div>
+  <div class="card-header"><h3 class="card-title" id="gpc-chart-title">Raw Best Quotes</h3></div>
   <div class="card-body">
     <div id="gpc-chart"></div>
   </div>
@@ -205,8 +205,8 @@
     }
 
     if (times.length === 0) {
-      AdminCharts.showEmpty(chart, "No trades found for selected date and instruments.");
-      setStatus("No trade records found for the selection.");
+      AdminCharts.showEmpty(chart, "No order book data found for selected date and instruments.");
+      setStatus("No order book records found for the selection.");
       return;
     }
 
@@ -254,7 +254,7 @@
       setStatus("Loaded " + s1BidData.length + " bid / " + s1AskData.length + " ask ticks for " + sym1 + " and " + s2BidData.length + "/" + s2AskData.length + " for " + sym2 + ".");
     } else {
       if (series1Data.length === 0 && series2Data.length === 0) {
-        AdminCharts.showEmpty(chart, "No trade data found for selected range.");
+        AdminCharts.showEmpty(chart, "No data found for selected range.");
         setStatus("No data found.", true);
         return;
       }
@@ -329,7 +329,7 @@
             "&to=" + encodeURIComponent(to);
     }
 
-    setStatus("Fetching trades data from ClickHouse...");
+    setStatus("Fetching order book data from ClickHouse...");
     try {
       var res = await fetch(url);
       if (!res.ok) {
