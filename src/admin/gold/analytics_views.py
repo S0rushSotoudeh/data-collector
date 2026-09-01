@@ -44,37 +44,3 @@ class GoldBestQuotesChartView(BaseView):
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
         return HTMLResponse(_render("gold/gold_price_comparison.html", ctx))
 
-
-class GoldNormalizedSpreadChartView(BaseView):
-    name = "Gold Normalized Spread"
-    identity = "gold-normalized-spread"
-    icon = "fa-solid fa-wave-square"
-    category = "Gold Analytics"
-    category_icon = "fa-solid fa-coins"
-
-    @expose("/gold-normalized-spread", methods=["GET"])
-    async def gold_normalized_spread(self, request: Request) -> HTMLResponse:
-        instruments: list[dict[str, str]] = []
-        with SessionLocal() as session:
-            stmt = (
-                select(StockInstrument)
-                .where(StockInstrument.is_gold_etf.is_(True))
-                .order_by(StockInstrument.symbol.asc())
-            )
-            golds = session.execute(stmt).scalars().all()
-            for g in golds:
-                instruments.append({
-                    "instrument_code": g.instrument_code,
-                    "symbol": g.symbol or g.instrument_code,
-                    "name_fa": g.name_fa or "",
-                })
-
-        ctx: dict[str, Any] = {
-            "request": request,
-            "admin": self._admin_ref,
-            "title": "Gold Normalized Spread",
-            "subtitle": "Log-return normalized Best Bid/Ask quotes — ln(P/P₀) from session open",
-            "instruments": instruments,
-        }
-        ctx["url_for"] = lambda name, **params: request.url_for(name, **params)
-        return HTMLResponse(_render("gold/gold_normalized_spread.html", ctx))

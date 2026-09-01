@@ -1,16 +1,10 @@
-from datetime import date
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.admin.gold.analytics_views import GoldNormalizedSpreadChartView
 from src.main import app
 
-
-def test_gold_normalized_spread_view_properties() -> None:
-    assert GoldNormalizedSpreadChartView.category == "Gold Analytics"
-    assert GoldNormalizedSpreadChartView.identity == "gold_normalized_spread"
 
 
 @pytest.mark.asyncio
