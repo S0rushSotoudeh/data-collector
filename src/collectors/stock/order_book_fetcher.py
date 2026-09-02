@@ -23,6 +23,18 @@ async def get_active_stock_codes() -> list[str]:
         return [row[0] for row in rows]
 
 
+async def get_active_gold_etf_codes() -> list[str]:
+    session: Session
+    with SessionLocal() as session:
+        stmt = (
+            select(StockInstrument.instrument_code)
+            .where(StockInstrument.status == "active")
+            .where(StockInstrument.is_gold_etf.is_(True))
+        )
+        rows = session.execute(stmt).all()
+        return [row[0] for row in rows]
+
+
 async def get_stock_codes_active_in_range(
     start_date: date, end_date: date
 ) -> list[str]:
@@ -32,6 +44,21 @@ async def get_stock_codes_active_in_range(
             select(StockInstrument.instrument_code)
             .where(StockInstrument.last_trade_date >= start_date)
             .where(StockInstrument.last_trade_date.isnot(None))
+        )
+        rows = session.execute(stmt).all()
+        return [row[0] for row in rows]
+
+
+async def get_gold_etf_codes_active_in_range(
+    start_date: date, end_date: date
+) -> list[str]:
+    session: Session
+    with SessionLocal() as session:
+        stmt = (
+            select(StockInstrument.instrument_code)
+            .where(StockInstrument.last_trade_date >= start_date)
+            .where(StockInstrument.last_trade_date.isnot(None))
+            .where(StockInstrument.is_gold_etf.is_(True))
         )
         rows = session.execute(stmt).all()
         return [row[0] for row in rows]

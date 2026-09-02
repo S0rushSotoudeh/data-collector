@@ -22,6 +22,8 @@ from src.admin.run_views import (
     YieldCurveRunsView, OptionMispricingRunsView,
 )
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
+from src.admin.gold.views import GoldInstrumentAdmin, GoldOrderBookView, GoldTradesView
+from src.admin.gold.analytics_views import GoldBestQuotesChartView
 from src.admin.task_views import CeleryTasksView
 from src.admin.ime.views import ImeProducerAdmin, ImeProductAdmin, ImeTradesView, ImePriceVolumeView
 from src.admin.bonds.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
@@ -39,13 +41,44 @@ def create_admin(
         title="Data Collector Admin",
         templates_dir=str(Path(__file__).parent / "templates"),
     )
+    # Stock Market
     admin.add_view(StockInstrumentAdmin)
+    admin.add_view(StockOrderBookView)
+    admin.add_view(StockTradesView)
+
+    # Gold Market
+    admin.add_view(GoldInstrumentAdmin)
+    admin.add_view(GoldOrderBookView)
+    admin.add_view(GoldTradesView)
+
+    # Bond Market
     admin.add_view(BondInstrumentAdmin)
-    admin.add_view(OptionInstrumentAdmin)
     admin.add_view(BondOrderBookView)
     admin.add_view(BondTradesView)
+
+    # Option Market
+    admin.add_view(OptionInstrumentAdmin)
     admin.add_view(OptionOrderBookView)
     admin.add_view(OptionTradesView)
+
+    # IME Physical Market
+    admin.add_view(ImeProducerAdmin)
+    admin.add_view(ImeProductAdmin)
+    admin.add_view(ImeTradesView)
+    admin.add_view(ImePriceVolumeView)
+
+    # Gold Analytics
+    admin.add_view(GoldBestQuotesChartView)
+
+    # Bond Analytics
+    admin.add_view(YieldCurveFitsView)
+    admin.add_view(YieldCurveBondsView)
+    admin.add_view(YieldCurveChartView)
+    admin.add_view(YieldSpreadChartView)
+    admin.add_view(BondTradesValuesChartView)
+    admin.add_view(BondTradesRankingChartView)
+
+    # Option Analytics
     admin.add_view(OptionsAnalyticsView)
     admin.add_view(BoxCalculatorView)
     admin.add_view(BoxSpreadView)
@@ -56,27 +89,17 @@ def create_admin(
     admin.add_view(ORCWingFitsView)
     admin.add_view(OptionPricingConventionAdmin)
     admin.add_view(OptionFeeScheduleAdmin)
-    admin.add_view(ParityRunsView)
     admin.add_view(ParityAnalysisSnapshotsView)
-    admin.add_view(BoxSpreadRunsView)
     admin.add_view(BoxSpreadSnapshotsView)
     admin.add_view(BoxSpreadPricingsView)
-    admin.add_view(IVORCRunsView)
-    admin.add_view(OptionMispricingRunsView)
-    admin.add_view(MarketPotentialRunsView)
-    admin.add_view(StockOrderBookView)
-    admin.add_view(StockTradesView)
-    admin.add_view(YieldCurveFitsView)
-    admin.add_view(YieldCurveBondsView)
-    admin.add_view(YieldCurveChartView)
-    admin.add_view(YieldSpreadChartView)
-    admin.add_view(BondTradesValuesChartView)
-    admin.add_view(BondTradesRankingChartView)
-    admin.add_view(ImeProducerAdmin)
-    admin.add_view(ImeProductAdmin)
-    admin.add_view(ImeTradesView)
-    admin.add_view(ImePriceVolumeView)
+
+    # Operations
     admin.add_view(CeleryTasksView)
     admin.add_view(CollectionRunsView)
     admin.add_view(YieldCurveRunsView)
+    admin.add_view(ParityRunsView)
+    admin.add_view(BoxSpreadRunsView)
+    admin.add_view(IVORCRunsView)
+    admin.add_view(OptionMispricingRunsView)
+    admin.add_view(MarketPotentialRunsView)
     return admin

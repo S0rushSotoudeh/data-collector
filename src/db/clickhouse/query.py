@@ -1428,3 +1428,76 @@ async def get_stock_trades_ranking(from_date: date, to_date: date) -> list[dict[
     params = {"fd": from_date, "td": to_date}
     rows = (await client.query(q, parameters=params)).result_rows
     return [{"instrument_code": r[0], "value": price_from_storage(int(r[1]))} for r in rows]
+
+async def get_gold_order_book_micro_price_intraday(
+    instrument_code: str,
+    trade_date: date,
+    from_time: int | None = None,
+    to_time: int | None = None,
+    bucket_seconds: int = 5,
+    price_type: str = "micro",
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    where_clauses = [
+        "instrument_code = {code:String}",
+        "trade_date = {dt:Date}",
+        "bid_price > 0",
+        "ask_price > 0",
+    ]
+    params: dict[str, Any] = {"code": instrument_code, "dt": trade_date, "b": bucket_seconds}
+    if from_time is not None:
+        where_clauses.append("trade_time >= {ft:UInt32}")
+        params["ft"] = from_time
+    if to_time is not None:
+        where_clauses.append("trade_time <= {tt:UInt32}")
+        params["tt"] = to_time
+    where = " AND ".join(where_clauses)
+
+    q = (
+        f"SELECT "
+        f"    intDiv(trade_time, {{b:UInt32}}) * {{b:UInt32}} AS t_bucket, "
+        f"    argMaxIf(toFloat64(bid_price), ref_id, depth_level = 1) AS best_bid, "
+        f"    argMaxIf(toFloat64(ask_price), ref_id, depth_level = 1) AS best_ask, "
+        f"    sum(toFloat64(bid_price * bid_volume)) / nullIf(sum(toFloat64(bid_volume)), 0) AS weighted_bid, "
+        f"    sum(toFloat64(ask_price * ask_volume)) / nullIf(sum(toFloat64(ask_volume)), 0) AS weighted_ask, "
+        f"    argMaxIf("
+        f"        (toFloat64(bid_volume) * toFloat64(ask_price) + toFloat64(ask_volume) * toFloat64(bid_price)) / nullIf(toFloat64(bid_volume + ask_volume), 0), "
+        f"        ref_id, depth_level = 1"
+        f"    ) AS micro_price "
+        f"FROM `{STOCK_ORDER_BOOK_TABLE}` FINAL "
+        f"WHERE {where} "
+        f"GROUP BY t_bucket "
+        f"ORDER BY t_bucket ASC"
+    )
+    rows = (await client.query(q, parameters=params)).result_rows
+    result: list[dict[str, Any]] = []
+    for r in rows:
+        bb = float(r[1] or 0.0)
+        ba = float(r[2] or 0.0)
+        wb = float(r[3] or bb)
+        wa = float(r[4] or ba)
+        mp = float(r[5] or ((bb + ba) / 2.0 if (bb + ba) > 0 else 0.0))
+
+        if price_type == "best_bid":
+            selected_price = bb
+        elif price_type == "best_ask":
+            selected_price = ba
+        elif price_type == "weighted_bid":
+            selected_price = wb
+        elif price_type == "weighted_ask":
+            selected_price = wa
+        elif price_type == "mid":
+            selected_price = (bb + ba) / 2.0 if (bb + ba) > 0 else 0.0
+        else:  # micro
+            selected_price = mp
+
+        result.append({
+            "trade_time": int(r[0]),
+            "price": price_from_storage(selected_price),
+            "best_bid": price_from_storage(bb),
+            "best_ask": price_from_storage(ba),
+            "weighted_bid": price_from_storage(wb),
+            "weighted_ask": price_from_storage(wa),
+            "micro_price": price_from_storage(mp),
+        })
+    return result

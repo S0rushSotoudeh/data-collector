@@ -61,7 +61,11 @@ from src.collectors.option.order_book_fetcher import (
 )
 from src.collectors.option.trade_fetcher import backfill_option_trades
 from src.collectors.stock.instrument_sync import sync_stock_instruments_to_pg
-from src.collectors.stock.order_book_fetcher import backfill_stock_order_books
+from src.collectors.stock.order_book_fetcher import (
+    backfill_stock_order_books,
+    get_active_gold_etf_codes,
+    get_gold_etf_codes_active_in_range,
+)
 from src.collectors.stock.trade_fetcher import backfill_stock_trades
 from src.collectors.ime.service import (
     ALL_HISTORY_START,
@@ -211,6 +215,80 @@ def fetch_yesterday_stock_trades(self) -> dict:
         self,
         lambda progress: backfill_stock_trades(start_date=yesterday, end_date=yesterday, progress=progress),
     )
+
+
+@shared_task(bind=True)
+def fetch_yesterday_gold_orderbook(self) -> dict:
+    yesterday = date.today() - timedelta(days=1)
+
+    async def collect(progress):
+        codes = await get_gold_etf_codes_active_in_range(yesterday, yesterday)
+        if not codes:
+            codes = await get_active_gold_etf_codes()
+        result = await backfill_stock_order_books(
+            start_date=yesterday, end_date=yesterday, instrument_codes=codes, progress=progress
+        )
+        result["instrument_count"] = len(codes)
+        return result
+
+    return _run_collection(self, collect)
+
+
+@shared_task(bind=True)
+def fetch_yesterday_gold_trades(self) -> dict:
+    yesterday = date.today() - timedelta(days=1)
+
+    async def collect(progress):
+        codes = await get_gold_etf_codes_active_in_range(yesterday, yesterday)
+        if not codes:
+            codes = await get_active_gold_etf_codes()
+        result = await backfill_stock_trades(
+            start_date=yesterday, end_date=yesterday, instrument_codes=codes, progress=progress
+        )
+        result["instrument_count"] = len(codes)
+        return result
+
+    return _run_collection(self, collect)
+
+
+@shared_task(bind=True)
+def backfill_gold_order_books_task(
+    self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None
+) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+
+    async def collect(progress):
+        codes = await get_gold_etf_codes_active_in_range(start, end)
+        if not codes:
+            codes = await get_active_gold_etf_codes()
+        result = await backfill_stock_order_books(
+            start_date=start, end_date=end, instrument_codes=codes, progress=progress
+        )
+        result["instrument_count"] = len(codes)
+        return result
+
+    return _run_collection(self, collect, explicit_run_id=collection_run_id)
+
+
+@shared_task(bind=True)
+def backfill_gold_trades_task(
+    self, start_date_str: str, end_date_str: str, collection_run_id: str | None = None
+) -> dict:
+    start = date.fromisoformat(start_date_str)
+    end = date.fromisoformat(end_date_str)
+
+    async def collect(progress):
+        codes = await get_gold_etf_codes_active_in_range(start, end)
+        if not codes:
+            codes = await get_active_gold_etf_codes()
+        result = await backfill_stock_trades(
+            start_date=start, end_date=end, instrument_codes=codes, progress=progress
+        )
+        result["instrument_count"] = len(codes)
+        return result
+
+    return _run_collection(self, collect, explicit_run_id=collection_run_id)
 
 
 @shared_task(bind=True)

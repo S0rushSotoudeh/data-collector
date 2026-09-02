@@ -12,6 +12,8 @@ from sqlmodel import select
 from src.tasks import (
     backfill_bond_order_books_task,
     backfill_bond_trades_task,
+    backfill_gold_order_books_task,
+    backfill_gold_trades_task,
     backfill_option_order_books_task,
     backfill_option_trades_task,
     backfill_stock_order_books_task,
@@ -54,6 +56,8 @@ class CeleryTasksView(BaseView):
                 "backfill-bond-trades": backfill_bond_trades_task,
                 "backfill-stock-order-books": backfill_stock_order_books_task,
                 "backfill-stock-trades": backfill_stock_trades_task,
+                "backfill-gold-order-books": backfill_gold_order_books_task,
+                "backfill-gold-trades": backfill_gold_trades_task,
                 "backfill-option-order-books": backfill_option_order_books_task,
                 "backfill-option-trades": backfill_option_trades_task,
                 "compute-yield-curve": compute_yield_curve_snapshot,

@@ -3,7 +3,50 @@
 {% block head_css %}
 {{ super() }}
 <style>
-  /* Keep category links visibly nested beneath their sidebar section. */
+  /* Sidebar padding & spacing */
+  aside.navbar-vertical {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  aside.navbar-vertical .container-fluid {
+    padding-left: 0.25rem !important;
+    padding-right: 0.25rem !important;
+  }
+
+  /* Brand header in sidebar */
+  .sidebar-brand-wrapper {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.75rem 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  aside.navbar-vertical .navbar-brand {
+    padding: 0 !important;
+    margin: 0 !important;
+    font-size: 1.05rem !important;
+    width: 100%;
+  }
+  aside.navbar-vertical .navbar-brand h3 {
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
+    margin: 0 !important;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    letter-spacing: -0.01em;
+  }
+  aside.navbar-vertical .navbar-brand a {
+    display: inline-flex;
+    align-items: center;
+    width: 100%;
+    color: inherit;
+    text-decoration: none;
+  }
+
+  /* Category links nested styling */
   #navbar-menu .dropdown-menu-column {
     margin-left: 0.75rem;
     padding-left: 0.5rem;
@@ -12,9 +55,70 @@
 
   #navbar-menu .dropdown-menu-column > .nav-link {
     padding-left: 2.5rem !important;
+    font-size: 0.875rem;
+    position: relative;
+    border-radius: 4px;
+    margin: 2px 0;
+    transition: background 0.15s ease, color 0.15s ease;
   }
-</style>
-<style>
+
+  /* Category chevron rotation */
+  #navbar-menu .nav-link.dropdown-toggle::after {
+    margin-left: auto;
+    transition: transform 0.2s ease;
+  }
+  #navbar-menu .nav-item.dropdown.is-open > .nav-link.dropdown-toggle::after,
+  #navbar-menu .nav-item.dropdown.has-active > .nav-link.dropdown-toggle::after {
+    transform: rotate(90deg);
+  }
+
+  /* Default Collapsed: categories are closed by default unless is-open or has-active */
+  #navbar-menu .dropdown-menu {
+    display: none !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    position: static !important;
+    width: 100% !important;
+  }
+  #navbar-menu .nav-item.dropdown.is-open > .dropdown-menu,
+  #navbar-menu .nav-item.dropdown.has-active > .dropdown-menu {
+    display: block !important;
+  }
+
+  /* Active Window / Page Highlight */
+  #navbar-menu .dropdown-menu-column > .nav-link.active,
+  #navbar-menu > .navbar-nav > .nav-item > .nav-link.active {
+    background: #206bc4 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border-left: 4px solid #ffffff !important;
+    border-radius: 0 4px 4px 0;
+    box-shadow: 0 2px 6px rgba(32, 107, 196, 0.4);
+  }
+  #navbar-menu .dropdown-menu-column > .nav-link.active::after,
+  #navbar-menu > .navbar-nav > .nav-item > .nav-link.active::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    background: #ffffff;
+    border-radius: 50%;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    box-shadow: 0 0 8px #ffffff;
+  }
+
+  /* Active Category Parent Highlight */
+  #navbar-menu .nav-item.dropdown.has-active > .dropdown-toggle {
+    color: #60a5fa !important;
+    font-weight: 600;
+    background: rgba(96, 165, 250, 0.1);
+    border-radius: 4px;
+  }
+
   @media (max-width: 900px) {
     #navbar-menu,
     #navbar-menu .navbar-collapse,
@@ -38,4 +142,86 @@
     }
   }
 </style>
+{% endblock %}
+
+{% block tail_js %}
+{{ super() }}
+<script>
+(function () {
+  "use strict";
+
+  // Clean up legacy compact mode state if present in browser
+  try {
+    localStorage.removeItem("admin_sidebar_compact");
+    document.body.classList.remove("sidebar-compact");
+  } catch (e) {}
+
+  // 1. Setup brand header wrapper
+  var brand = document.querySelector("aside.navbar-vertical .navbar-brand");
+  if (brand && !brand.parentElement.classList.contains("sidebar-brand-wrapper")) {
+    var wrapper = document.createElement("div");
+    wrapper.className = "sidebar-brand-wrapper";
+    brand.parentNode.insertBefore(wrapper, brand);
+    wrapper.appendChild(brand);
+  }
+
+  // 2. Find active window & highlight + auto-uncollapse active category
+  var curPath = (window.location.pathname || "").replace(/\/+$/, "") || "/";
+  var navLinks = document.querySelectorAll("#navbar-menu a.nav-link[href]");
+  var bestMatch = null;
+  var bestLen = 0;
+
+  navLinks.forEach(function (link) {
+    var href = link.getAttribute("href");
+    if (!href || href === "#" || href.startsWith("javascript:")) return;
+    var linkPath = href.split("?")[0].replace(/\/+$/, "") || "/";
+
+    if (curPath === linkPath) {
+      if (linkPath.length > bestLen) {
+        bestMatch = link;
+        bestLen = linkPath.length;
+      }
+    } else if (linkPath !== "/" && linkPath !== "/admin" && curPath.indexOf(linkPath) === 0) {
+      if (linkPath.length > bestLen) {
+        bestMatch = link;
+        bestLen = linkPath.length;
+      }
+    }
+  });
+
+  if (bestMatch) {
+    bestMatch.classList.add("active");
+    var parentDropdown = bestMatch.closest(".nav-item.dropdown");
+    if (parentDropdown) {
+      parentDropdown.classList.add("has-active");
+      parentDropdown.classList.add("is-open");
+      var toggle = parentDropdown.querySelector(".dropdown-toggle");
+      if (toggle) {
+        toggle.classList.add("active");
+        toggle.setAttribute("aria-expanded", "true");
+      }
+    }
+  }
+
+  // 3. Accordion Toggle for Category Headers (click to expand / collapse)
+  document.querySelectorAll("#navbar-menu .nav-link.dropdown-toggle").forEach(function (toggle) {
+    toggle.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var parent = toggle.closest(".nav-item.dropdown");
+      if (!parent) return;
+
+      var isOpen = parent.classList.contains("is-open") || parent.classList.contains("has-active");
+      if (isOpen) {
+        parent.classList.remove("is-open");
+        parent.classList.remove("has-active");
+        toggle.setAttribute("aria-expanded", "false");
+      } else {
+        parent.classList.add("is-open");
+        toggle.setAttribute("aria-expanded", "true");
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}
