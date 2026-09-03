@@ -63,6 +63,9 @@ class OperationRunsView(BaseView):
             if self.family == "parity":
                 row["detail_url"] = f"/admin/parity-analysis-snapshots?run_id={item.run_id}"
                 row["detail_label"] = "Snapshots"
+            elif self.family == "gold_kalman":
+                row["detail_url"] = f"/admin/gold-kalman?run_id={item.run_id}"
+                row["detail_label"] = "Monitor"
             elif self.family == "box_spread":
                 row["detail_url"] = f"/admin/options-box-spread?run_id={item.run_id}"
                 row["detail_label"] = "Visualization"

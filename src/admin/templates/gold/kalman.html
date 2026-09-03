@@ -1,0 +1,81 @@
+{% extends "shared/admin_base.html" %}
+{% block custom_styles %}
+<style>
+.kalman-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}.kalman-chart{height:340px;width:100%}#ranking-wrap{overflow:auto}#ranking td,#ranking th{white-space:nowrap;padding:8px}#kalman-status{white-space:pre-wrap}progress{width:100%}.kalman-actions{display:flex;gap:12px;flex-wrap:wrap;margin:14px 0}pre{max-height:450px;overflow:auto}label{display:block}input,select{max-width:100%}
+</style>
+{% endblock %}
+{% block content %}
+<p>This monitor measures relative ETF deviations. Positive scores mean rich, negative scores mean cheap. Bid/ask edges exclude fees and hedge costs.</p>
+<details class="card p-3 mb-3"><summary>Import historical observations</summary>
+<p>Provide an event CSV and its session/source manifest. The manifest must list every scheduled session, including sessions with missing observations. Unknown or non-continuous phases suppress scores.</p>
+<form id="upload" class="kalman-grid">
+<label>Session and source manifest (.json)<input id="manifest-file" type="file" accept=".json" required class="form-control"></label>
+<label>Level-1 observations (.csv)<input id="events-file" type="file" accept=".csv" required class="form-control"></label>
+<button class="btn btn-outline-primary" type="submit">Import immutable dataset</button></form>
+</details>
+<form id="policy" class="card p-3 mb-3">
+<div class="kalman-grid">
+<label>Dataset<select id="dataset_id" class="form-select" required></select></label>
+<label>ETF instrument IDs (comma separated)<input id="symbols" class="form-control" required></label>
+{% for name, label in [('history_from','History from'),('validation_from','Validation from'),('validation_to','Validation to'),('test_from','Test from'),('test_to','Test to')] %}
+<label>{{ label }} (Tehran)<input type="datetime-local" step="1" id="{{ name }}" required class="form-control"></label>
+{% endfor %}
+{% for name, label, value, minimum in [('calibration_lookback_sessions','Calibration sessions',3,1),('min_calibration_observations','Minimum distinct observations',60,3),('kalman_half_life_seconds','Factor half-life (seconds)',30,0.001),('warmup_seconds','Warm-up (seconds)',120,0),('analysis_horizon_seconds','Outcome horizon (seconds)',60,0.001),('max_quote_age','Maximum quote age (seconds)',10,0.001),('z_alert','Alert threshold',2,0.001),('k','Consecutive intervals',3,1)] %}
+<label>{{ label }}<input id="{{ name }}" type="number" value="{{ value }}" min="{{ minimum }}" step="{{ 1 if name in ['calibration_lookback_sessions','min_calibration_observations','k'] else 'any' }}" required class="form-control"></label>
+{% endfor %}
+<label>Evaluation<select id="mode" class="form-select"><option value="validation">Development validation</option><option value="test">Final test (locked policy)</option></select></label>
+<label>Completed validation run ID (for final test)<input id="validation_run_id" class="form-control"></label>
+</div><div class="kalman-actions"><button class="btn btn-primary" type="submit" id="start-run">Run replay</button><a href="/admin/gold-kalman-runs" class="btn btn-outline-secondary">Run history</a></div>
+</form>
+<p id="dataset-description"></p><p id="kalman-status" role="status" aria-live="polite">Loading datasets…</p>
+<progress id="progress" value="0" max="1" aria-label="Replay progress"></progress>
+<div id="results" hidden>
+<div class="kalman-actions">
+<label>Method<select id="method" class="form-select"><option value="scheduled">Session-calibrated Kalman</option><option value="frozen">Frozen calibration</option><option value="peer_median">Peer median</option></select></label>
+<label>Decision time<select id="decision" class="form-select"></select></label>
+<button id="next-times" class="btn btn-outline-secondary">Next timestamps</button>
+<a id="export-scores" class="btn btn-outline-secondary">Export scores</a><a id="export-outcomes" class="btn btn-outline-secondary">Export outcomes</a>
+</div>
+<div id="factor-chart" class="kalman-chart"></div>
+<div id="ranking-wrap"><table id="ranking" class="table"><thead><tr><th>ETF</th><th>Z score</th><th>Fair (IRR)</th><th>Microprice (IRR)</th><th>Deviation (bps)</th><th>Cheap edge (bps)</th><th>Rich edge (bps)</th><th>Quote age (s)</th><th>Coverage</th><th>Alert</th></tr></thead><tbody></tbody></table></div>
+<label>ETF history<select id="history-symbol" class="form-select"></select></label><button id="next-history" class="btn btn-outline-secondary">Next history page</button>
+<div id="history-chart" class="kalman-chart"></div>
+<details><summary>Calibration versions and exclusions</summary><pre id="calibration-report"></pre></details>
+<details open><summary>Evaluation by session (correlated seconds are not independent tests)</summary><div id="evaluation-report" style="overflow:auto"></div><p>Recovery and gap reduction use log-bps. Positive values indicate recovery or narrowing; they are not realized profits.</p></details>
+</div>
+{% endblock %}
+{% block custom_js %}
+{% include "shared/echarts_support.html" %}
+<script>
+(() => {
+'use strict';
+const el=id=>document.getElementById(id), base='/api/v1/gold-kalman';
+const dates=['history_from','validation_from','validation_to','test_from','test_to'];
+const numbers=['calibration_lookback_sessions','min_calibration_observations','kalman_half_life_seconds','warmup_seconds','analysis_horizon_seconds','max_quote_age','z_alert','k'];
+let runId=new URLSearchParams(location.search).get('run_id'), datasets=[], nextTimes=null, nextHistory=null, timer=null, controller=null, snapshotController=null, historyController=null;
+const chart=AdminCharts.init('factor-chart'), historyChart=AdminCharts.init('history-chart');
+const status=message=>el('kalman-status').textContent=message;
+const url=suffix=>`${base}/runs/${runId}${suffix}`;
+const method=()=>encodeURIComponent(el('method').value);
+async function fetchJSON(path, options={}){const response=await fetch(path,options);const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:JSON.stringify(data.detail));return data;}
+function option(select,value,label){const item=document.createElement('option');item.value=value;item.textContent=label;select.append(item);}
+function localTime(value){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tehran',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(new Date(value)).replace(' ','T');}
+function tehranInstant(value){const wall=new Date(value+'Z');let instant=wall;for(let i=0;i<3;i++){const shown=new Date(localTime(instant)+'Z');instant=new Date(instant.getTime()+wall.getTime()-shown.getTime());}if(localTime(instant)!==wall.toISOString().slice(0,19))throw Error('This Tehran local time does not exist. Choose a valid time.');return instant.toISOString();}
+function renderEvaluation(result){const target=el('evaluation-report');target.replaceChildren();const table=document.createElement('table');table.className='table';const header=table.createTHead().insertRow();['Session (Tehran)','Method','Scores','Outcomes','Mean recovery','Mean gap reduction','Missing outcomes','Mean coverage'].forEach(label=>{const cell=document.createElement('th');cell.textContent=label;header.append(cell);});const body=table.createTBody();for(const item of result.sessions||[]){const row=body.insertRow();[localTime(item.session_open),item.method,item.score_count,item.outcome_count,item.mean_recovery_log_bps,item.mean_gap_reduction_log_bps,item.missing_outcome_rate==null?'—':(100*item.missing_outcome_rate).toFixed(2)+'%',item.mean_coverage].forEach(value=>{const cell=row.insertCell();cell.textContent=value==null?'—':typeof value==='number'?value.toLocaleString(undefined,{maximumFractionDigits:3}):value;});}target.append(table);if(!(result.sessions||[]).length)target.append(document.createTextNode('No completed evaluation sessions.'));}
+function datasetChanged(){const d=datasets.find(d=>d.dataset_id===el('dataset_id').value);if(!d)return;el('symbols').value=[...new Set(d.manifest.sessions.flatMap(s=>s.eligible_symbols))].join(',');el('dataset-description').textContent=`${d.row_count.toLocaleString()} events • ${d.manifest.clock} • ${d.manifest.source_reference}`;}
+async function loadDatasets(){datasets=(await fetchJSON(`${base}/datasets`)).items;el('dataset_id').replaceChildren();datasets.filter(d=>d.status==='ready').forEach(d=>option(el('dataset_id'),d.dataset_id,`${d.name} (${d.row_count.toLocaleString()} events)`));datasetChanged();}
+function links(){el('export-scores').href=url(`/export.csv?method=${method()}`);el('export-outcomes').href=url(`/export.csv?kind=outcomes&method=${method()}`);}
+async function snapshot(){if(!el('decision').value)return;snapshotController?.abort();snapshotController=new AbortController();const data=await fetchJSON(url(`/snapshot?decision_time=${encodeURIComponent(el('decision').value)}&method=${method()}`),{signal:snapshotController.signal});const body=el('ranking').tBodies[0];body.replaceChildren();for(const row of data.items){const tr=document.createElement('tr');for(const value of [row.instrument_code,row.z_score,row.fair_price,row.microprice,row.mispricing_bps,row.cheap_edge_bps,row.rich_edge_bps,row.quote_age,row.coverage,row.alert?'Yes':'']){const td=document.createElement('td');td.textContent=typeof value==='number'?value.toLocaleString(undefined,{maximumFractionDigits:3}):value;tr.append(td);}body.append(tr);}if(!data.items.length){const tr=body.insertRow();const cell=tr.insertCell();cell.colSpan=10;cell.textContent='No eligible scores at this timestamp. Check coverage, warm-up and calibration.';}}
+async function timeline(offset=0){controller?.abort();snapshotController?.abort();controller=new AbortController();const data=await fetchJSON(url(`/timeline?method=${method()}&offset=${offset}`),{signal:controller.signal});el('decision').replaceChildren();for(const row of data.items)option(el('decision'),row.decision_time,localTime(row.decision_time));const firstReady=data.items.find(r=>r.ready);if(firstReady)el('decision').value=firstReady.decision_time;nextTimes=data.next_offset;el('next-times').disabled=nextTimes===null;links();if(data.items.length){chart.setOption({tooltip:{trigger:'axis'},legend:{data:['Factor','Coverage']},grid:AdminCharts.grid(),dataZoom:AdminCharts.dualAxisZoom(),xAxis:{type:'category',data:data.items.map(r=>localTime(r.decision_time))},yAxis:[{type:'value',scale:true,name:'Log factor'},{type:'value',name:'Fresh ETFs'}],series:[{name:'Factor',type:'line',showSymbol:false,data:data.items.map(r=>r.factor)},{name:'Coverage',type:'line',yAxisIndex:1,showSymbol:false,data:data.items.map(r=>r.coverage)}]});await snapshot();}else AdminCharts.showEmpty(chart,'No output yet');}
+async function history(offset=0){if(!el('history-symbol').value)return;historyController?.abort();historyController=new AbortController();const data=await fetchJSON(url(`/history?symbol=${encodeURIComponent(el('history-symbol').value)}&method=${method()}&offset=${offset}`),{signal:historyController.signal});nextHistory=data.next_offset;el('next-history').disabled=nextHistory===null;if(!data.items.length){AdminCharts.showEmpty(historyChart,'No eligible scores');return;}historyChart.setOption({tooltip:{trigger:'axis'},legend:{data:['Z score','Deviation (bps)']},grid:AdminCharts.grid(),dataZoom:AdminCharts.dualAxisZoom(),xAxis:{type:'category',data:data.items.map(r=>localTime(r.decision_time))},yAxis:[{type:'value',name:'Z score'},{type:'value',name:'bps'}],series:[{name:'Z score',type:'line',showSymbol:false,data:data.items.map(r=>r.z_score)},{name:'Deviation (bps)',type:'line',yAxisIndex:1,showSymbol:false,data:data.items.map(r=>r.mispricing_bps)}]});}
+async function loadRun(){clearTimeout(timer);const data=await fetchJSON(url(''));const policy=data.config.policy;el('progress').max=data.progress_total||1;el('progress').value=data.progress_current||0;status(`${data.status} • ${data.output_count||0} committed rows${data.error?' • '+data.error:''}`);el('results').hidden=false;chart.resize();historyChart.resize();el('history-symbol').replaceChildren();policy.symbols.forEach(s=>option(el('history-symbol'),s,s));const terminal=['completed','failed','skipped','SUCCESS','FAILURE'].includes(data.status);if(!terminal){timer=setTimeout(()=>loadRun().catch(e=>status(e.message)),2000);return;}el('start-run').disabled=false;renderEvaluation(data.result);el('calibration-report').textContent=JSON.stringify((await fetchJSON(url('/calibrations'))).items,null,2);await timeline();await history();}
+el('policy').onsubmit=async event=>{event.preventDefault();try{const config={dataset_id:el('dataset_id').value,symbols:el('symbols').value.split(',').map(s=>s.trim()).filter(Boolean),mode:el('mode').value};dates.forEach(id=>config[id]=tehranInstant(el(id).value));numbers.forEach(id=>config[id]=Number(el(id).value));if(el('validation_run_id').value)config.validation_run_id=el('validation_run_id').value.trim();el('start-run').disabled=true;const data=await fetchJSON('/admin/tasks/run-gold-kalman',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)});runId=data.run_id;window.history.replaceState(null,'',`?run_id=${runId}`);await loadRun();}catch(error){el('start-run').disabled=false;status(error.message);}};
+el('upload').onsubmit=async event=>{event.preventDefault();const button=event.target.querySelector('button');button.disabled=true;try{const form=new FormData();form.append('manifest',await el('manifest-file').files[0].text());form.append('events',el('events-file').files[0]);status('Importing and validating observations…');const data=await fetchJSON(`${base}/datasets`,{method:'POST',body:form});await loadDatasets();el('dataset_id').value=data.dataset_id;datasetChanged();status(`Imported ${data.row_count.toLocaleString()} events`);}catch(error){status(error.message);}finally{button.disabled=false;}};
+el('dataset_id').onchange=datasetChanged;
+el('method').onchange=()=>Promise.all([timeline(),history()]).catch(e=>{if(e.name!=='AbortError')status(e.message);});
+el('decision').onchange=()=>snapshot().catch(e=>status(e.message));el('history-symbol').onchange=()=>history().catch(e=>status(e.message));
+el('next-times').onclick=()=>timeline(nextTimes).catch(e=>status(e.message));el('next-history').onclick=()=>history(nextHistory).catch(e=>status(e.message));
+loadDatasets().then(async()=>{if(runId){const data=await fetchJSON(url(''));const p=data.config.policy;el('dataset_id').value=p.dataset_id;datasetChanged();el('symbols').value=p.symbols.join(',');dates.forEach(id=>el(id).value=localTime(p[id]));numbers.forEach(id=>el(id).value=p[id]);el('validation_run_id').value=p.mode==='validation'&&data.status==='completed'?runId:p.validation_run_id||'';el('mode').value=p.mode;await loadRun();}else status('Choose a verified dataset and evaluation ranges to begin.');}).catch(e=>status(e.message));
+})();
+</script>
+{% endblock %}

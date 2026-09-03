@@ -92,6 +92,7 @@ class RunProgressReporter:
 
 
 TASK_SPECS: dict[str, TaskSpec] = {
+    "src.tasks.run_gold_kalman": TaskSpec("gold_kalman", "gold_kalman.replay", "Gold ETF consensus"),
     "src.tasks.sync_bond_instruments": TaskSpec("collection", "collection.sync_bond_instruments", "bond_instruments"),
     "src.tasks.sync_option_instruments": TaskSpec("collection", "collection.sync_option_instruments", "option_instruments"),
     "src.tasks.sync_stock_instruments": TaskSpec("collection", "collection.sync_stock_instruments", "stock_instruments"),

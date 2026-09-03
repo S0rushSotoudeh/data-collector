@@ -18,6 +18,7 @@ from src.routes.box_spread import router as box_spread_router
 from src.routes.option_mispricing import router as option_mispricing_router
 from src.routes.ime import router as ime_router
 from src.routes.gold_analytics import router as gold_analytics_router
+from src.routes.gold_consensus import router as gold_consensus_router
 
 _SECRET_KEY = env("SECRET_KEY")
 
@@ -45,6 +46,7 @@ app.include_router(box_spread_router, prefix="")
 app.include_router(option_mispricing_router, prefix="")
 app.include_router(ime_router, prefix="")
 app.include_router(gold_analytics_router, prefix="")
+app.include_router(gold_consensus_router)
 
 
 @app.get("/admin/data-collection-run/list", include_in_schema=False)
