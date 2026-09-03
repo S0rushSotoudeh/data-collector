@@ -1,0 +1,4 @@
+interface:
+  display_name: "Market Analytics Builder"
+  short_description: "Build tracked analytics from compute to admin UI"
+  default_prompt: "Use $market-analytics-builder to add a market analytics feature with tracked progress and an admin page."
