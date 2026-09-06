@@ -86,8 +86,8 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert len(new_versions) == 18
-        assert applied == list(range(1, 19))
+        assert new_versions == sorted(_discover_versions())
+        assert applied == sorted(_discover_versions())
 
     def test_upgrade_skips_already_applied(self) -> None:
         applied = []
@@ -104,12 +104,12 @@ class TestUpgrade:
         ):
             new_versions = upgrade()
 
-        assert new_versions == list(range(3, 19))
-        assert applied == list(range(3, 19))
+        assert new_versions == [v for v in sorted(_discover_versions()) if v > 2]
+        assert applied == new_versions
 
     def test_upgrade_all_already_applied(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 19)]
+        client.query.return_value.result_rows = [(version,) for version in sorted(_discover_versions())]
 
         with patch("src.db.clickhouse.migrations.manager.get_client", return_value=client):
             new_versions = upgrade()
@@ -122,7 +122,7 @@ class TestUpgrade:
 
         new_versions = upgrade(client)
 
-        assert len(new_versions) == 18
+        assert new_versions == sorted(_discover_versions())
 
     def test_parity_ytm_migration_is_additive_and_reversible(self) -> None:
         migration = importlib.import_module(
@@ -240,7 +240,7 @@ class TestPending:
 
     def test_pending_none(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 19)]
+        client.query.return_value.result_rows = [(version,) for version in sorted(_discover_versions())]
 
         p = pending(client)
         assert p == []
@@ -249,7 +249,7 @@ class TestPending:
 class TestCheck:
     def test_check_true_when_up_to_date(self) -> None:
         client = MagicMock()
-        client.query.return_value.result_rows = [(version,) for version in range(1, 19)]
+        client.query.return_value.result_rows = [(version,) for version in sorted(_discover_versions())]
 
         assert check(client) is True
 

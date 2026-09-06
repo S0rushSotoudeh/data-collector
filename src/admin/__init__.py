@@ -24,6 +24,8 @@ from src.admin.run_views import (
 from src.admin.stock.stock_clickhouse_views import StockOrderBookView, StockTradesView
 from src.admin.gold.views import GoldInstrumentAdmin, GoldOrderBookView, GoldTradesView
 from src.admin.gold.analytics_views import GoldBestQuotesChartView
+from src.admin.gold.consensus_views import GoldKalmanView, GoldKalmanRunsView
+from src.admin.gold.deposit_certificate_views import DepositCertificateOrderBookView, ParsianStreamSettingsView
 from src.admin.task_views import CeleryTasksView
 from src.admin.ime.views import ImeProducerAdmin, ImeProductAdmin, ImeTradesView, ImePriceVolumeView
 from src.admin.bonds.yield_curve_views import YieldCurveFitsView, YieldCurveBondsView
@@ -50,6 +52,7 @@ def create_admin(
     admin.add_view(GoldInstrumentAdmin)
     admin.add_view(GoldOrderBookView)
     admin.add_view(GoldTradesView)
+    admin.add_view(DepositCertificateOrderBookView)
 
     # Bond Market
     admin.add_view(BondInstrumentAdmin)
@@ -69,6 +72,8 @@ def create_admin(
 
     # Gold Analytics
     admin.add_view(GoldBestQuotesChartView)
+    admin.add_view(GoldKalmanView)
+    admin.add_view(GoldKalmanRunsView)
 
     # Bond Analytics
     admin.add_view(YieldCurveFitsView)
@@ -95,6 +100,7 @@ def create_admin(
 
     # Operations
     admin.add_view(CeleryTasksView)
+    admin.add_view(ParsianStreamSettingsView)
     admin.add_view(CollectionRunsView)
     admin.add_view(YieldCurveRunsView)
     admin.add_view(ParityRunsView)

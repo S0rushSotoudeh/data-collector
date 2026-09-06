@@ -35,6 +35,9 @@ services:
       - ./pyproject.toml:/app/pyproject.toml
       - ./explore-data-sources:/app/explore-data-sources
     env_file: .env
+    environment:
+      PARSIAN_REDIS_URL: "${PARSIAN_REDIS_URL:-redis://redis:6379/1}"
+      PARSIAN_STREAM_MAXLEN: "${PARSIAN_STREAM_MAXLEN:-1000000}"
     depends_on: *app-depends-on
     restart: "${RESTART_POLICY}"
 
@@ -77,12 +80,42 @@ services:
       ]
     restart: "${RESTART_POLICY}"
 
+  parsian-listener:
+    build: *app-build
+    container_name: "${PARSIAN_LISTENER_CONTAINER_NAME:-dc-parsian-listener}"
+    user: "${UID}:${GID}"
+    volumes: *app-volumes
+    env_file: .env
+    environment:
+      PARSIAN_REDIS_URL: "${PARSIAN_REDIS_URL:-redis://redis:6379/1}"
+      PARSIAN_STREAM_MAXLEN: "${PARSIAN_STREAM_MAXLEN:-1000000}"
+    depends_on: *app-depends-on
+    entrypoint: ["/app/entrypoint-celery.sh"]
+    command: ["python", "-m", "src.collectors.parsian_stream", "listener"]
+    restart: "${RESTART_POLICY}"
+
+  parsian-writer:
+    build: *app-build
+    container_name: "${PARSIAN_WRITER_CONTAINER_NAME:-dc-parsian-writer}"
+    user: "${UID}:${GID}"
+    volumes: *app-volumes
+    env_file: .env
+    environment:
+      PARSIAN_REDIS_URL: "${PARSIAN_REDIS_URL:-redis://redis:6379/1}"
+      PARSIAN_STREAM_MAXLEN: "${PARSIAN_STREAM_MAXLEN:-1000000}"
+    depends_on: *app-depends-on
+    entrypoint: ["/app/entrypoint-celery.sh"]
+    command: ["python", "-m", "src.collectors.parsian_stream", "writer"]
+    restart: "${RESTART_POLICY}"
+
   redis:
     image: "${REDIS_IMAGE}"
     container_name: "${REDIS_CONTAINER_NAME}"
-    command: ["redis-server", "--port", "${REDIS_PORT}"]
+    command: ["redis-server", "--port", "${REDIS_PORT}", "--appendonly", "yes", "--appendfsync", "everysec"]
     ports:
       - "${REDIS_BIND_HOST}:${REDIS_HOST_PORT}:${REDIS_PORT}"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "-p", "${REDIS_PORT}", "ping"]
       interval: "${HEALTHCHECK_INTERVAL}"
@@ -204,6 +237,7 @@ services:
     profiles: ["qa"]
 
 volumes:
+  redis_data:
   postgres_data:
   clickhouse_data:
   dbgate_data:

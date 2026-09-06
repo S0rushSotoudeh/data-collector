@@ -11,3 +11,5 @@ graphify-out/
 .codex-slide-redesign/
 .codex-slide-review/
 qa/artifacts/
+artifacts
+doc/quant/gold_kalman_course_for_notebooklm.md

@@ -1,0 +1,26 @@
+{% extends "shared/admin_base.html" %}
+{% block content %}
+{% for message in messages %}<div class="alert alert-{{ message.type }}">{{ message.text }}</div>{% endfor %}
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title">Credential</h3></div><div class="card-body">
+    {% if not credential.encryption_key_configured %}<div class="alert alert-warning"><strong>Encryption key missing.</strong> Put the generated Fernet value in <code>PARSIAN_TOKEN_ENCRYPTION_KEY</code> in <code>.env</code>, then recreate the API and listener containers.</div>{% endif %}
+    {% if credential.configured %}<p>Configured: <strong>yes</strong></p><p>Fingerprint: <code>{{ credential.fingerprint }}</code></p><p>Validated: {{ credential.validated_at }}</p>
+    {% else %}<p class="text-muted">No credential configured. The listener is idle.</p>{% endif %}
+    <form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="form-label">Patris broker token</label><textarea class="form-control" name="token" rows="4" required autocomplete="off" {% if not credential.encryption_key_configured %}disabled{% endif %}></textarea>
+      <p class="text-muted mt-2">Paste the five-part token from Patris—not the Fernet encryption key. The existing token is never displayed. Saving can take up to 15 seconds while both live symbols are verified.</p>
+      <button class="btn btn-primary" {% if not credential.encryption_key_configured %}disabled{% endif %}>Validate and replace</button>
+    </form>
+  </div></div></div>
+  <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title">Pipeline health</h3></div><div class="card-body">
+    {% if status.error %}<div class="alert alert-danger">Status unavailable: {{ status.error }}</div>{% else %}
+    <dl class="row"><dt class="col-5">Listener</dt><dd class="col-7">{{ status.listener.state or 'unknown' }}</dd>
+      <dt class="col-5">Writer</dt><dd class="col-7">{{ status.writer.state or 'unknown' }}</dd>
+      <dt class="col-5">Backlog</dt><dd class="col-7">{{ status.backlog }} / {{ status.capacity }} ({{ status.capacity_percent }}%)</dd>
+      <dt class="col-5">Capacity status</dt><dd class="col-7">{{ status.severity }}</dd>
+      <dt class="col-5">Last frame</dt><dd class="col-7">{{ status.listener.last_frame_at or '—' }}</dd>
+      <dt class="col-5">Last write</dt><dd class="col-7">{{ status.writer.last_write_at or '—' }}</dd></dl>
+    {% endif %}
+  </div></div></div>
+</div>
+{% endblock %}

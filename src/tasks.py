@@ -508,3 +508,9 @@ def compute_option_market_potential_daily(day_str: str | None = None) -> dict:
 
     target = date.fromisoformat(day_str) if day_str else date.today() - timedelta(days=1)
     return compute_daily(target)
+
+
+@shared_task
+def run_gold_kalman(run_id: str) -> dict:
+    from src.analytics.gold_consensus_engine import process_run
+    return process_run(run_id)

@@ -6,6 +6,7 @@ def test_all_tasks_registered() -> None:
         name for name in celery.tasks.keys() if not name.startswith("celery.")
     ]
     expected = {
+        "src.tasks.run_gold_kalman",
         "src.tasks.sync_bond_instruments",
         "src.tasks.fetch_yesterday_bond_order_book",
         "src.tasks.backfill_bond_order_books_task",

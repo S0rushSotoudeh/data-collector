@@ -19,6 +19,26 @@ from src.admin._render import (
 from src.services.operation_runs import RUN_STATUSES, list_runs, run_to_dict
 
 
+def _gold_display_fields(item):
+    """Render symbols in history without changing the persisted internal keys."""
+    from src.db.clickhouse.gold_consensus import dataset_row, display_mapping
+    config = item.config or {}
+    policy = config.get("policy", {})
+    manifest = config.get("dataset_manifest")
+    if manifest is None:
+        dataset = dataset_row(policy["dataset_id"]) if policy.get("dataset_id") else None
+        manifest = dataset.manifest if dataset else {}
+    codes = set(policy.get("symbols", [])) | {code for s in manifest.get("sessions", []) for code in s["eligible_symbols"]}
+    labels = display_mapping(codes, manifest.get("clock"), config.get("display_symbols") or manifest.get("display_symbols"))
+    def named(value):
+        if isinstance(value, dict):
+            return {labels.get(k, k): named(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [named(v) for v in value]
+        return labels.get(value, value) if isinstance(value, str) else value
+    return named(config), named(item.result or {})
+
+
 class OperationRunsView(BaseView):
     family: str
     page_title: str
@@ -63,6 +83,12 @@ class OperationRunsView(BaseView):
             if self.family == "parity":
                 row["detail_url"] = f"/admin/parity-analysis-snapshots?run_id={item.run_id}"
                 row["detail_label"] = "Snapshots"
+            elif self.family == "gold_kalman":
+                row["detail_url"] = f"/admin/gold-kalman?run_id={item.run_id}"
+                row["detail_label"] = "Monitor"
+                display_config, display_result = _gold_display_fields(item)
+                row["config_pretty"] = json.dumps(display_config, ensure_ascii=False, indent=2, default=str)
+                row["result_pretty"] = json.dumps(display_result, ensure_ascii=False, indent=2, default=str)
             elif self.family == "box_spread":
                 row["detail_url"] = f"/admin/options-box-spread?run_id={item.run_id}"
                 row["detail_label"] = "Visualization"
