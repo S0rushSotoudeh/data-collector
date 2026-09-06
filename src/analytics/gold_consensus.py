@@ -187,13 +187,15 @@ def calibrate(grids: list[Grid], symbols: list[str], config: GoldKalmanRunConfig
 
 
 def filter_grid(grid: Grid, symbols: list[str], fit: dict, config: GoldKalmanRunConfig,
-                method: str = "scheduled") -> dict[str, np.ndarray]:
+                method: str = "scheduled", trace_at: int | None = None) -> dict:
     """Score before update. Market diagnostics remain available while suppressed."""
     t_count, n = grid.valid.shape
     result = {key: np.full((t_count, n), np.nan) for key in
               ("fair", "z", "delta", "benchmark_variance", "persistence")}
     market = np.full((t_count, 6), np.nan)  # factor, sigma, coverage, dispersion, max|z|, ready
     result["market"] = market
+    if trace_at is not None:
+        result["trace"] = {"reason": "calibration_unavailable" if not fit.get("available") else "initialization_or_warmup"}
     if not fit.get("available"):
         market[:, 2] = 0
         market[:, 5] = 0
@@ -225,6 +227,10 @@ def filter_grid(grid: Grid, symbols: list[str], fit: dict, config: GoldKalmanRun
         w = weight[updates].sum()
         b = np.dot(weight[updates], normalized[t, updates])
         ready = coverage >= 3 and now - initialized_at >= config.warmup_seconds
+        if t == trace_at:
+            result["trace"] = {"reason": "" if ready else "insufficient_coverage" if coverage < 3 else "initialization_or_warmup",
+                "f_prior": float(factor), "P_prior": float(prior_var), "W": float(w), "B": float(b),
+                "update_symbols": [fit["symbols"][i] for i in updates], "values": {}}
         persistence[~valid[t]] = 0
         if ready:
             own_w = np.where(new[t, fresh], weight[fresh], 0)
@@ -242,6 +248,14 @@ def filter_grid(grid: Grid, symbols: list[str], fit: dict, config: GoldKalmanRun
             result["delta"][t, target] = residual
             result["benchmark_variance"][t, target] = excluded_var
             result["persistence"][t, target] = persistence[fresh]
+            if t == trace_at:
+                result["trace"]["values"] = {fit["symbols"][i]: {
+                    "alpha": float(alpha[i]), "r": float(r[i]), "q": fit["q"],
+                    "p_i": float(normalized[t, i]), "w_i": float(weight[i]), "u_i": float(own_w[k]),
+                    "P_excluded": float(excluded_var[k]), "f_excluded": float(fair_factor[k]),
+                    "residual": float(residual[k]), "z_score": float(z[k]),
+                    "fair_price": float(result["fair"][t, indices[i]]), "persistence": int(persistence[i])}
+                    for k, i in enumerate(fresh)}
             market[t, 4:6] = np.max(np.abs(z)), 1
         else:
             persistence[:] = 0

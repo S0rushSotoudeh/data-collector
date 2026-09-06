@@ -65,15 +65,17 @@ validation does not certify the truth of an operator's source declaration.
 
 ## Run workflow
 
-1. Import observations and their provenance through the monitor.
-2. Select at least three candidate instrument IDs and history, validation, and
+1. Manage immutable observations through the authenticated dataset ingestion API
+   (`POST /api/v1/gold-kalman/datasets` with multipart manifest and events files).
+   Import controls are intentionally absent from the monitor. Existing snapshots remain available.
+2. Select at least three ETF symbols and history, validation, and
    final test bounds. All selections display Tehran local time and use `[from,to)`.
 3. Select calibration sessions, minimum distinct observations, factor half-life,
    warm-up, quote freshness, horizon, and alert threshold/persistence.
 4. Run **Development validation**. Calibration consumes completed past sessions;
    future portions of the imported dataset are not consulted for filtering.
 5. Compare a small number of policies using validation results. Select **Final
-   test** with the completed validation run ID. The server requires the same
+   test** from a completed usable validation. The server requires the same
    dataset, controls, universe, and ranges. Changing them requires new validation.
 6. Review three methods: session-calibrated Kalman, frozen calibration, and
    contemporaneous normalized peer median. Both Kalman variants reset at session
@@ -153,4 +155,72 @@ trading, a Gaussian false-alert probability, or latency-realistic performance.
 Live operation, historical price-limit annotations, and external NAV anchoring
 require their respective verified inputs. Statistical sensitivity/regime studies
 require multiple development runs and enough real sessions; a single session
-does not establish uncertainty across regimes.
+  does not establish uncertainty across regimes.
+
+## September 2026 audit changes
+
+Results and draft settings are separate. Saved headers and exports retain the
+run's dataset, policy, source clock, method and evaluation identity. Real data
+is the default draft source; synthetic datasets require an explicit demo choice.
+The readiness report lists the missing historical inputs and current database
+symbols without claiming that current ETF flags establish past membership.
+
+Previous/next decisions, bounded 2,000-second windows, session selection and
+Tehran jump-to-time controls read saved outputs. Deep links retain `run_id`,
+`method` and an offset-aware `time`. Time axes break missing-score gaps; factor
+and ETF charts share a selected-time cursor and window.
+
+Preflight rejects impossible authorized lookback, no session overlap,
+unattainable warm-up/outcome bounds and insufficient observation upper bounds.
+Passing upper bounds does not guarantee actual grid-change counts, fresh-peer
+overlap, nonzero calibration scale, initialization or statistical reliability.
+Final-test promotion requires usable scores and outcomes for all three methods
+and matching engine and manifest identities. Reusing final data is not fresh
+unseen evidence. No alert direction or numerical policy semantics changed.
+
+New imports use version-2 fingerprints binding the canonical full manifest,
+frozen database display mapping and observations. New runs snapshot metadata
+and record a SHA-256 content identity of the model implementation. Old datasets
+and results are not rewritten; legacy display metadata is explicitly unfrozen.
+Ordinary exports use symbols; string instrument codes remain internal keys.
+
+The on-demand `/explain` endpoint uses the same filter and saved calibration,
+replaying only the selected session prefix without writing outputs. It shows
+pre-update exclusion, raw source event, freshness and stored-value agreement.
+Full traces are refused for unmatched/unrecorded engine identities, including
+legacy runs. Legacy stored outputs remain readable alongside clearly labeled
+current-engine source diagnostics. Restart the Celery worker after deployment
+so API and worker execute the same implementation.
+
+### Verification on 4 September 2026
+
+No database migration or new dependency was required. The existing menu,
+tracked `gold_kalman.replay` task, PostgreSQL lifecycle/calibrations, ClickHouse
+outputs, progress units and retry keys are retained. API and idle worker were
+restarted; the shared template environment caches templates until restart.
+
+Docker checks: **75 passed**, with one existing TestClient deprecation warning:
+
+```sh
+docker compose exec -T -e CACHE_ENABLED=false api python -m pytest \
+  src/tests/test_gold_consensus.py src/tests/test_gold_consensus_api.py \
+  src/tests/test_gold_consensus_audit.py src/tests/test_admin_chart_templates.py \
+  src/tests/test_operation_runs.py -q
+```
+
+`qa/gold_kalman_ui_check.js` provides six read-only browser-console checks of
+the shipped Tehran conversion and chart-gap helpers. Browser verification also
+covered 13:00 method switching, forward/backward windows, deep-link reload,
+35-result/3-draft separation, short-default preflight failure, source symbols,
+warm-up explanations, matched Kalman/peer-median traces, locked final policy,
+cross-session decisions and delayed-response cancellation. Temporary network
+and viewport overrides were restored.
+
+Three small replays reused the existing explicitly synthetic 360-event snapshot:
+validation `787f6819-0b93-46db-8a3d-c74b5edc2c52`, locked test
+`3e001041-bd69-4ae2-a69e-5bb65acbc68a` (576 committed rows each), and two-session
+validation `b515a3c0-af58-40d9-ab84-f917a590655a` (1,152 rows).
+These use deliberately small verification settings and are not trading defaults
+or real-market validation. Existing datasets and previously saved runs were not
+rewritten or deleted. Real-history integration remains blocked by the missing
+historical input contract described above.

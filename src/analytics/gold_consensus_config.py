@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from datetime import datetime
 from typing import Literal
 from uuid import UUID
@@ -10,6 +11,24 @@ from uuid import UUID
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 MODEL_VERSION = "gold-consensus-v1"
+
+
+def _engine_identity():
+    """Content identity, also valid in Docker images without a Git checkout."""
+    digest = hashlib.sha256()
+    paths = [Path(__file__).with_name(name) for name in
+             ("gold_consensus.py", "gold_consensus_config.py", "gold_consensus_engine.py")]
+    paths.append(Path(__file__).parents[1] / "db" / "clickhouse" / "gold_consensus.py")
+    for path in paths:
+        digest.update(path.read_bytes().replace(b"\r\n", b"\n"))
+    return "sha256:" + digest.hexdigest()
+
+
+_LOADED_ENGINE_IDENTITY = _engine_identity()
+
+
+def engine_identity():
+    return _LOADED_ENGINE_IDENTITY
 
 
 class SessionSpec(BaseModel):
@@ -36,6 +55,8 @@ class DatasetManifest(BaseModel):
     phase_reference: str = Field(min_length=1, max_length=2000)
     clock: Literal["historical_arrival", "exchange_time", "synthetic"]
     price_unit: Literal["IRR"] = "IRR"
+    fingerprint_version: int = Field(default=1, ge=1, le=2)
+    display_symbols: dict[str, str] = Field(default_factory=dict)
     sessions: list[SessionSpec] = Field(min_length=1, max_length=366)
 
     @model_validator(mode="after")

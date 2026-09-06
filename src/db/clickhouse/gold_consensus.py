@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import io
+import json
 import math
 import uuid
 from datetime import datetime
@@ -16,6 +17,7 @@ from src.analytics.gold_consensus import canonical_events
 from src.analytics.gold_consensus_config import DatasetManifest
 from src.config import env, env_int
 from src.db.models.gold_consensus import GoldKalmanDataset
+from src.db.models.stock import StockInstrument
 from src.db.session import SessionLocal
 
 INPUT_COLUMNS = ["dataset_id", "session_index", "instrument_code", "available_at", "quote_time", "sequence", "bid", "ask", "bid_qty", "ask_qty", "phase"]
@@ -48,6 +50,33 @@ def list_datasets():
                  "row_count": r.row_count, "sha256": r.sha256, "manifest": r.manifest, "error": r.error} for r in rows]
 
 
+def display_mapping(codes, clock, frozen=None):
+    if clock == "synthetic":
+        return {code: code for code in codes}
+    if frozen:
+        return {code: frozen.get(code, "Symbol unavailable") for code in codes}
+    with SessionLocal() as session:
+        rows = session.execute(select(StockInstrument.instrument_code, StockInstrument.symbol)
+                               .where(StockInstrument.instrument_code.in_(codes))).all()
+    found = dict(rows)
+    return {code: found.get(code) or "Symbol unavailable" for code in codes}
+
+
+def manifest_fingerprint(manifest):
+    return hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(",", ":"),
+                                     ensure_ascii=False).encode()).hexdigest()
+
+
+def observation_support(dataset_id):
+    """An upper bound: cached states and missing peers can only reduce support."""
+    rows = get_client().query(
+        "SELECT session_index, instrument_code, count() "
+        "FROM gold_kalman_inputs WHERE dataset_id={id:UUID} AND phase=1 "
+        "AND bid>0 AND ask>bid AND bid_qty>0 AND ask_qty>0 GROUP BY session_index,instrument_code",
+        parameters={"id": str(dataset_id)}).result_rows
+    return {(int(i), str(code)): int(count) for i, code, count in rows}
+
+
 def parse_instant(value):
     stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if stamp.tzinfo is None or stamp.utcoffset() is None:
@@ -57,6 +86,9 @@ def parse_instant(value):
 
 def import_dataset(manifest: DatasetManifest, binary_file) -> dict:
     """Append once, then publish ready metadata. Failed uploads stay unavailable."""
+    codes = sorted({code for s in manifest.sessions for code in s.eligible_symbols})
+    manifest = manifest.model_copy(update={"fingerprint_version": 2,
+        "display_symbols": display_mapping(codes, manifest.clock)})
     dataset = GoldKalmanDataset(name=manifest.name, manifest=manifest.model_dump(mode="json"))
     with SessionLocal() as session:
         session.add(dataset)
@@ -64,7 +96,7 @@ def import_dataset(manifest: DatasetManifest, binary_file) -> dict:
         session.refresh(dataset)
     dataset_id = dataset.dataset_id
     count = 0
-    digest = hashlib.sha256()
+    digest = hashlib.sha256(("gold-dataset-v2:" + manifest_fingerprint(dataset.manifest)).encode())
     client = get_client()
     bounds = [(s.open.timestamp(), s.close.timestamp(), set(s.eligible_symbols)) for s in manifest.sessions]
     starts = np.array([x[0] for x in bounds])
@@ -159,12 +191,12 @@ def query_rows(kind, run_id, *, method="scheduled", decision_time=None, symbol=N
     return [dict(zip(columns, r)) for r in result.result_rows]
 
 
-def stream_csv(kind, run_id, method):
+def stream_csv(kind, run_id, method, labels=None):
     if kind not in COLUMNS:
         raise ValueError("unknown output kind")
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(COLUMNS[kind])
+    writer.writerow(["symbol" if c == "instrument_code" else c for c in COLUMNS[kind]])
     yield buffer.getvalue()
     with get_client().query_row_block_stream(
         f"SELECT {', '.join(COLUMNS[kind])} FROM gold_kalman_{kind} FINAL "
@@ -173,5 +205,11 @@ def stream_csv(kind, run_id, method):
         for block in stream:
             buffer.seek(0)
             buffer.truncate()
-            writer.writerows(block)
+            for values in block:
+                row = dict(zip(COLUMNS[kind], values))
+                if "instrument_code" in row:
+                    row["instrument_code"] = (labels or {}).get(row["instrument_code"], "Symbol unavailable")
+                if "symbols" in row:
+                    row["symbols"] = [(labels or {}).get(code, "Symbol unavailable") for code in row["symbols"]]
+                writer.writerow(row.values())
             yield buffer.getvalue()

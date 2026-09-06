@@ -2,11 +2,13 @@
 
 ## Goal
 
-This proposed **market monitor** estimates relative fair price and mispricing
+This **market monitor** estimates relative fair price and mispricing
 for gold ETFs from fresh level-1 books on a one-second decision clock. One
 shared scalar Kalman filter tracks the common gold factor, with parameters
 calibrated before each session. It does not define pair trades or entry/exit
-rules and is not yet implemented.
+rules. The replay engine and admin workbench are implemented at
+`/admin/gold-kalman`; real database-history replay remains blocked on verified
+calendar, historical eligibility, phase and source-clock/order provenance.
 
 Order books alone identify **relative** mispricing. If every ETF is jointly
 mispriced versus gold/NAV, the latent factor moves with them and residuals stay

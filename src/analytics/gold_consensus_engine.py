@@ -12,8 +12,8 @@ import numpy as np
 from sqlalchemy import text
 
 from src.analytics.gold_consensus import calibrate, filter_grid, outcome_arrays, reconstruct
-from src.analytics.gold_consensus_config import DatasetManifest, GoldKalmanRunConfig
-from src.db.clickhouse.gold_consensus import get_client, dataset_row, insert_rows, load_events
+from src.analytics.gold_consensus_config import DatasetManifest, GoldKalmanRunConfig, engine_identity
+from src.db.clickhouse.gold_consensus import get_client, dataset_row, insert_rows, load_events, observation_support, manifest_fingerprint
 from src.db.models.gold_consensus import GoldKalmanCalibration
 from src.db.session import SessionLocal, engine
 from src.services.operation_runs import RunProgressReporter, get_run
@@ -29,6 +29,20 @@ def validate_inputs(config: GoldKalmanRunConfig):
         raise ValueError("selected symbols are absent from dataset eligibility")
     if manifest.sessions[0].open > config.history_from or manifest.sessions[-1].close < config.test_to:
         raise ValueError("dataset calendar must cover the complete authorized history and evaluation ranges")
+    errors = calendar_readiness(config, manifest)
+    if errors:
+        raise ValueError("; ".join(errors))
+    support = observation_support(config.dataset_id)
+    usable_sessions = []
+    for index, start, end in jobs(config, manifest):
+        selected = range(index - config.calibration_lookback_sessions, index)
+        supported = [code for code in config.symbols if code in manifest.sessions[index].eligible_symbols
+                     and sum(min(support.get((i, code), 0), math.ceil((manifest.sessions[i].close - manifest.sessions[i].open).total_seconds()))
+                             for i in selected) >= config.min_calibration_observations]
+        if len(supported) >= 3 and end - math.ceil(start) > max(1, config.warmup_seconds) + config.analysis_horizon_seconds:
+            usable_sessions.append(index)
+    if not usable_sessions:
+        raise ValueError("min_calibration_observations / ETF symbols: fewer than three candidates have enough qualifying L1 states in the immediately preceding sessions, or no post-warm-up outcome window is attainable")
     if config.mode == "test":
         reference = get_run(config.validation_run_id)
         if (reference is None or reference.family != "gold_kalman" or reference.status != "completed"
@@ -36,7 +50,38 @@ def validate_inputs(config: GoldKalmanRunConfig):
                 or reference.config.get("policy", {}).get("mode") != "validation"
                 or reference.config.get("dataset_sha256") != dataset.sha256):
             raise ValueError("test policy/dataset must match a completed validation run")
+        if not validation_usable(reference.result):
+            raise ValueError("validation_run_id: completed validation has no usable scores/outcomes for every method; run a usable development validation first")
+        if reference.config.get("engine_identity") != engine_identity():
+            raise ValueError("validation_run_id: engine identity changed or is unrecorded; new development validation required")
+        if reference.config.get("manifest_sha256") != manifest_fingerprint(dataset.manifest):
+            raise ValueError("validation_run_id: source manifest changed; new development validation required")
     return dataset, manifest
+
+
+def validation_usable(result):
+    reports = (result or {}).get("sessions", [])
+    return all(sum(r.get("score_count", 0) for r in reports if r.get("method") == method) > 0
+               and sum(r.get("outcome_count", 0) for r in reports if r.get("method") == method) > 0
+               for method in ("scheduled", "frozen", "peer_median"))
+
+
+def calendar_readiness(config, manifest):
+    errors = []
+    work = jobs(config, manifest)
+    if not work:
+        return ["evaluation dates: no scheduled session overlaps the selected range"]
+    first_validation = next((i for i, s in enumerate(manifest.sessions)
+                             if s.close > config.validation_from and s.open < config.validation_to), None)
+    if first_validation is None:
+        errors.append("validation dates: no scheduled development session for frozen calibration")
+    for index in sorted({i for i, _, _ in work} | ({first_validation} if first_validation is not None else set())):
+        first = index - config.calibration_lookback_sessions
+        if first < 0 or manifest.sessions[first].open < config.history_from:
+            errors.append(f"calibration_lookback_sessions / history_from: session {manifest.sessions[index].open.isoformat()} needs {config.calibration_lookback_sessions} immediately preceding authorized sessions")
+    if not any(end - math.ceil(start) > max(1, config.warmup_seconds) + config.analysis_horizon_seconds for _, start, end in work):
+        errors.append("warmup_seconds / analysis_horizon_seconds: no session has an attainable score and exact-horizon outcome before its exclusive end")
+    return errors
 
 
 def jobs(config, manifest):
@@ -132,6 +177,11 @@ def summary(scores, outcomes, grid, config):
                                    for code, name in enumerate(("unknown", "continuous", "auction", "halted"))},
             "mean_scored_quote_age": float(np.mean(ages[published])) if count else None,
             "max_scored_quote_age": float(np.max(ages[published])) if count else None,
+            "scored_quote_age_quantiles": dict(zip(("p0", "p50", "p95", "p100"),
+                np.quantile(ages[published], [0, .5, .95, 1]).tolist())) if count else {},
+            "suppression_breakdown": {
+                "insufficient_coverage": int(((scores["market"][:, 5] == 0) & (scores["market"][:, 2] < 3)).sum()),
+                "initialization_or_warmup": int(((scores["market"][:, 5] == 0) & (scores["market"][:, 2] >= 3)).sum())},
             "residual_std_by_symbol": {symbol: float(np.std(scores["delta"][:, j][published[:, j]]))
                  for j, symbol in enumerate(config.symbols) if published[:, j].any()}}
 
@@ -158,6 +208,8 @@ def _process_run(run_id):
     dataset, manifest = validate_inputs(config)
     if dataset.sha256 != operation.config["dataset_sha256"] or config.policy_hash() != operation.config["policy_hash"]:
         raise ValueError("immutable input identity changed")
+    if operation.config.get("engine_identity") != engine_identity() or operation.config.get("manifest_sha256") != manifest_fingerprint(dataset.manifest):
+        raise ValueError("engine or manifest identity changed; submit a new run")
     client = get_client()
     reporter = RunProgressReporter(run_id)
     reporter.set_total(progress_total(config, manifest))
@@ -229,14 +281,21 @@ def _process_run(run_id):
                         "total_rows": output_count, "timings": dict(timings)})
         common = np.logical_and.reduce([np.isfinite(values[0]["z"]) for values in method_outputs.values()])
         common_outcomes = np.logical_and.reduce([values[1]["available"] for values in method_outputs.values()])
+        scheduled_peers = grid.valid & np.array([s in scheduled.get("symbols", []) for s in config.symbols])
+        frozen_peers = grid.valid & np.array([s in frozen.get("symbols", []) for s in config.symbols])
+        basket_differences = np.any(scheduled_peers != frozen_peers, axis=1)
         for _, outcomes, report in method_outputs.values():
             report["common_score_count"] = int(common.sum())
             report["common_outcome_count"] = int(common_outcomes.sum())
+            report["common_missing_outcome_rate"] = 1 - float(common_outcomes.sum()) / int(common.sum()) if common.any() else None
+            report["common_scores_with_different_peer_baskets"] = int((common & basket_differences[:, None]).sum())
             report["common_mean_recovery_log_bps"] = float(np.mean(outcomes["recovery"][common_outcomes])) if common_outcomes.any() else None
             report["common_mean_gap_reduction_log_bps"] = float(np.mean(outcomes["reduction"][common_outcomes])) if common_outcomes.any() else None
     timings["wall_seconds"] = time.perf_counter() - run_started
     timings["worker_peak_rss_mb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024
     return {"status": "completed" if reports else "skipped", "total_rows": output_count,
+            "analytical_usable": validation_usable({"sessions": reports}),
+            "engine_identity": engine_identity(),
             "warning_count": warning_count, "sessions": reports, "timings": dict(timings),
             "clock": manifest.clock, "dataset_sha256": dataset.sha256, "policy_hash": config.policy_hash(),
             "interpretation": "Relative-price diagnostics; excludes fees and hedge costs; session-level comparisons, not independent tick tests."}

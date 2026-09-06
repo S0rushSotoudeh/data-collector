@@ -39,7 +39,7 @@ def test_submission_uses_configured_celery_in_threadpool():
         assert kwargs['progress_total']>0
         return SimpleNamespace(run_id=uuid.uuid4()),SimpleNamespace(id='task')
     with patch('src.routes.gold_consensus._require_admin',new=AsyncMock()), \
-         patch('src.routes.gold_consensus.validate_inputs',return_value=(SimpleNamespace(sha256='sha'),manifest)), \
+         patch('src.routes.gold_consensus.validate_inputs',return_value=(SimpleNamespace(sha256='sha',manifest=manifest.model_dump(mode='json')),manifest)), \
          patch('src.routes.gold_consensus.enqueue_task',side_effect=enqueue):
         response=TestClient(app).post('/admin/tasks/run-gold-kalman',json=cfg.model_dump(mode='json'))
         assert response.status_code==200,response.text

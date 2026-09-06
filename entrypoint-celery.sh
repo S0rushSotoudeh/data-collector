@@ -7,5 +7,5 @@ alembic upgrade head
 echo "Running ClickHouse migrations..."
 python manage.py clickhouse migrate
 
-echo "Starting Celery..."
+echo "Starting service..."
 exec "$@"
