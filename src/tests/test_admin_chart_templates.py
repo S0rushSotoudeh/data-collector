@@ -24,6 +24,15 @@ def test_admin_chart_templates_compile(template_name):
     _TEMPLATE_ENV.get_template(template_name)
 
 
+def test_gold_best_quotes_chart_includes_normalized_certificates() -> None:
+    source = Path("src/admin/templates/gold/gold_price_comparison.html").read_text()
+
+    assert "/gold-analytics/normalized-spread/intraday" in source
+    assert "formatTime(p.t)" in source
+    for label in ("Gold Certificate Bid", "Gold Certificate Ask", "Coin Certificate Bid", "Coin Certificate Ask"):
+        assert label in source
+
+
 def test_shared_chart_utility_exposes_dual_axis_zoom():
     source = Path("src/admin/templates/shared/echarts_support.html").read_text()
 

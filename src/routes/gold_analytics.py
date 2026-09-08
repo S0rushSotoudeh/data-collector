@@ -1,8 +1,10 @@
+import asyncio
 from datetime import date
 import math
 
 from fastapi import APIRouter, HTTPException, Query
 
+from src.db.clickhouse.deposit_certificates import SYMBOLS, intraday_best_quotes
 from src.db.clickhouse.query import (
     get_gold_order_book_micro_price_intraday,
     get_stock_trades_daily,
@@ -12,6 +14,7 @@ from src.routes.yield_curve import _validate_hhmmss
 router = APIRouter(prefix="/api/v1", tags=["gold-analytics"])
 
 GOLD_ETF_TRADING_START = 120000
+GOLD_TRADING_END = 180000
 
 
 @router.get("/gold-analytics/compare/intraday")
@@ -87,30 +90,23 @@ async def api_gold_normalized_spread_intraday(
     else:
         to_time = None
 
-    effective_from_time = from_time if from_time is not None else 113000
+    effective_from_time = max(from_time or GOLD_ETF_TRADING_START, GOLD_ETF_TRADING_START)
+    effective_to_time = min(to_time or GOLD_TRADING_END, GOLD_TRADING_END)
+    if effective_from_time > effective_to_time:
+        raise HTTPException(status_code=422, detail="Requested time range is outside the 12:00–18:00 trading session")
 
-    points1 = await get_gold_order_book_micro_price_intraday(
-        instrument_code=instrument1,
-        trade_date=date,
-        from_time=effective_from_time,
-        to_time=to_time,
-        bucket_seconds=5,
-        price_type="best",
+    points1, points2, gold_bar, gold_coin = await asyncio.gather(
+        get_gold_order_book_micro_price_intraday(
+            instrument_code=instrument1, trade_date=date, from_time=effective_from_time,
+            to_time=effective_to_time, bucket_seconds=5, price_type="best",
+        ),
+        get_gold_order_book_micro_price_intraday(
+            instrument_code=instrument2, trade_date=date, from_time=effective_from_time,
+            to_time=effective_to_time, bucket_seconds=5, price_type="best",
+        ),
+        intraday_best_quotes(SYMBOLS[0], date, effective_from_time, effective_to_time),
+        intraday_best_quotes(SYMBOLS[1], date, effective_from_time, effective_to_time),
     )
-    points2 = await get_gold_order_book_micro_price_intraday(
-        instrument_code=instrument2,
-        trade_date=date,
-        from_time=effective_from_time,
-        to_time=to_time,
-        bucket_seconds=5,
-        price_type="best",
-    )
-
-    # Find first valid prices to use as log-return baseline
-    init_p1_bid = next((p["best_bid"] for p in points1 if p.get("best_bid", 0) > 0), None)
-    init_p1_ask = next((p["best_ask"] for p in points1 if p.get("best_ask", 0) > 0), None)
-    init_p2_bid = next((p["best_bid"] for p in points2 if p.get("best_bid", 0) > 0), None)
-    init_p2_ask = next((p["best_ask"] for p in points2 if p.get("best_ask", 0) > 0), None)
 
     def to_log_return(points: list, bid_init: float | None, ask_init: float | None) -> list[dict]:
         out = []
@@ -126,10 +122,19 @@ async def api_gold_normalized_spread_intraday(
                 out.append(entry)
         return out
 
+    def normalized(points: list[dict]) -> list[dict]:
+        bid_init = next((p["best_bid"] for p in points if p.get("best_bid", 0) > 0), None)
+        ask_init = next((p["best_ask"] for p in points if p.get("best_ask", 0) > 0), None)
+        return to_log_return(points, bid_init, ask_init)
+
     return {
         "trade_date": str(date),
-        "instrument1": {"code": instrument1, "points": to_log_return(points1, init_p1_bid, init_p1_ask)},
-        "instrument2": {"code": instrument2, "points": to_log_return(points2, init_p2_bid, init_p2_ask)},
+        "instrument1": {"code": instrument1, "points": normalized(points1)},
+        "instrument2": {"code": instrument2, "points": normalized(points2)},
+        "certificates": [
+            {"code": SYMBOLS[0], "points": normalized(gold_bar)},
+            {"code": SYMBOLS[1], "points": normalized(gold_coin)},
+        ],
     }
 
 

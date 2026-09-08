@@ -9,7 +9,8 @@ from src.main import app
 
 @pytest.mark.asyncio
 @patch("src.routes.gold_analytics.get_gold_order_book_micro_price_intraday", new_callable=AsyncMock)
-async def test_api_gold_normalized_spread_intraday(mock_get_ob) -> None:
+@patch("src.routes.gold_analytics.intraday_best_quotes", new_callable=AsyncMock)
+async def test_api_gold_normalized_spread_intraday(mock_get_certificates, mock_get_ob) -> None:
     mock_get_ob.side_effect = [
         [
             {"trade_time": 120000, "best_bid": 1000.0, "best_ask": 1001.0},
@@ -19,6 +20,10 @@ async def test_api_gold_normalized_spread_intraday(mock_get_ob) -> None:
             {"trade_time": 120000, "best_bid": 500.0, "best_ask": 501.0},
             {"trade_time": 120005, "best_bid": 505.0, "best_ask": 506.0},
         ],
+    ]
+    mock_get_certificates.side_effect = [
+        [{"trade_time": 120000, "best_bid": 2000.0, "best_ask": 2002.0}],
+        [{"trade_time": 120000, "best_bid": 3000.0, "best_ask": 3003.0}],
     ]
 
     transport = ASGITransport(app=app)
@@ -44,3 +49,8 @@ async def test_api_gold_normalized_spread_intraday(mock_get_ob) -> None:
         # Second point log return is positive (price went up)
         assert pts1[1]["bid"] > 0
         assert pts2[1]["bid"] > 0
+        assert [item["code"] for item in data["certificates"]] == ["GOLDBAR", "GOLDCOIN"]
+        assert data["certificates"][0]["points"][0]["bid"] == 0.0
+        assert all(call.kwargs["from_time"] == 120000 for call in mock_get_ob.call_args_list)
+        assert all(call.kwargs["to_time"] == 180000 for call in mock_get_ob.call_args_list)
+        assert all(call.args[2:] == (120000, 180000) for call in mock_get_certificates.call_args_list)

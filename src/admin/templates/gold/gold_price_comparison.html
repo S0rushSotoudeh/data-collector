@@ -80,7 +80,7 @@
 </div>
 
 <div class="card chart-card">
-  <div class="card-header"><h3 class="card-title" id="gpc-chart-title">Raw Best Quotes</h3></div>
+  <div class="card-header"><h3 class="card-title" id="gpc-chart-title">Normalized Best Quotes</h3></div>
   <div class="card-body">
     <div id="gpc-chart"></div>
   </div>
@@ -149,14 +149,14 @@
     var sym2 = getSelectedSymbol(inst2El);
 
     if (chartTitleEl) {
-      chartTitleEl.textContent = sym1 + " vs " + sym2 + " — Raw Order Book";
+      chartTitleEl.textContent = sym1 + " vs " + sym2 + (isIntraday ? " + Certificates" : "");
     }
 
     var times = [];
     var timeMap = {};
 
-    // Build series data: raw best_bid / best_ask per instrument (no forward fill)
     var s1BidData = [], s1AskData = [], s2BidData = [], s2AskData = [];
+    var barBidData = [], barAskData = [], coinBidData = [], coinAskData = [];
     // Fallback for daily mode (single price per day)
     var series1Data = [], series2Data = [];
 
@@ -164,24 +164,19 @@
       var pts1 = (data.instrument1 && data.instrument1.points) || [];
       var pts2 = (data.instrument2 && data.instrument2.points) || [];
 
-      pts1.forEach(function (p) {
-        var bid = p.best_bid || 0, ask = p.best_ask || 0;
-        if (bid > 0 || ask > 0) {
-          var tStr = formatTime(p.trade_time);
+      function addPoints(points, bidData, askData) {
+        points.forEach(function (p) {
+          var tStr = formatTime(p.t);
           if (!timeMap[tStr]) { timeMap[tStr] = true; times.push(tStr); }
-          if (bid > 0) s1BidData.push([tStr, bid]);
-          if (ask > 0) s1AskData.push([tStr, ask]);
-        }
-      });
-      pts2.forEach(function (p) {
-        var bid = p.best_bid || 0, ask = p.best_ask || 0;
-        if (bid > 0 || ask > 0) {
-          var tStr = formatTime(p.trade_time);
-          if (!timeMap[tStr]) { timeMap[tStr] = true; times.push(tStr); }
-          if (bid > 0) s2BidData.push([tStr, bid]);
-          if (ask > 0) s2AskData.push([tStr, ask]);
-        }
-      });
+          if (p.bid != null) bidData.push([tStr, p.bid]);
+          if (p.ask != null) askData.push([tStr, p.ask]);
+        });
+      }
+      addPoints(pts1, s1BidData, s1AskData);
+      addPoints(pts2, s2BidData, s2AskData);
+      var certificates = data.certificates || [];
+      addPoints((certificates[0] && certificates[0].points) || [], barBidData, barAskData);
+      addPoints((certificates[1] && certificates[1].points) || [], coinBidData, coinAskData);
       times.sort();
     } else {
       var days1 = (data.instrument1 && data.instrument1.days) || [];
@@ -211,14 +206,14 @@
     }
 
     if (isIntraday) {
-      if (s1BidData.length === 0 && s1AskData.length === 0 && s2BidData.length === 0 && s2AskData.length === 0) {
+      if (s1BidData.length === 0 && s1AskData.length === 0 && s2BidData.length === 0 && s2AskData.length === 0 && barBidData.length === 0 && barAskData.length === 0 && coinBidData.length === 0 && coinAskData.length === 0) {
         AdminCharts.showEmpty(chart, "No order book quotes found for selected date and instruments.");
         setStatus("No order book data found.", true);
         return;
       }
       chart.setOption({
         animation: false,
-        title: { text: sym1 + " vs " + sym2 + " — Raw Order Book (" + data.trade_date + ")", left: "center", top: 10 },
+        title: { text: "Normalized Best Quotes (" + data.trade_date + ", 12:00–18:00)", left: "center", top: 10 },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "cross", crossStyle: { color: "#999" } },
@@ -227,31 +222,32 @@
             var res = "<strong>" + params[0].value[0] + "</strong><br/>";
             params.forEach(function (item) {
               var val = item.value[1];
-              var formatted = val != null ? Number(val).toLocaleString() + " IRR" : "—";
+              var formatted = val != null ? ((Math.exp(Number(val)) - 1) * 100).toFixed(3) + "%" : "—";
               res += item.marker + " " + item.seriesName + ": <strong>" + formatted + "</strong><br/>";
             });
             return res;
           }
         },
-        legend: { data: [sym1 + " Bid", sym1 + " Ask", sym2 + " Bid", sym2 + " Ask"], top: 35 },
+        legend: { data: [sym1 + " Bid", sym1 + " Ask", sym2 + " Bid", sym2 + " Ask", "Gold Certificate Bid", "Gold Certificate Ask", "Coin Certificate Bid", "Coin Certificate Ask"], top: 35 },
         grid: { left: "4%", right: "4%", bottom: "12%", top: "16%", containLabel: true },
         dataZoom: [
           { type: "inside", start: 0, end: 100 },
           { type: "slider", start: 0, end: 100, bottom: 5 }
         ],
         xAxis: { type: "category", data: times, boundaryGap: false },
-        yAxis: [
-          { type: "value", name: sym1 + " (IRR)", scale: true, axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } } },
-          { type: "value", name: sym2 + " (IRR)", scale: true, position: "right", axisLabel: { formatter: function (v) { return Number(v).toLocaleString(); } } }
-        ],
+        yAxis: { type: "value", name: "Change from first quote", scale: true, axisLabel: { formatter: function (v) { return ((Math.exp(v) - 1) * 100).toFixed(2) + "%"; } } },
         series: [
-          { name: sym1 + " Bid", type: "line", yAxisIndex: 0, data: s1BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#fab005" }, itemStyle: { color: "#fab005" } },
-          { name: sym1 + " Ask", type: "line", yAxisIndex: 0, data: s1AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#fa5252", type: "dashed" }, itemStyle: { color: "#fa5252" } },
-          { name: sym2 + " Bid", type: "line", yAxisIndex: 1, data: s2BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#15aabf" }, itemStyle: { color: "#15aabf" } },
-          { name: sym2 + " Ask", type: "line", yAxisIndex: 1, data: s2AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#228be6", type: "dashed" }, itemStyle: { color: "#228be6" } }
+          { name: sym1 + " Bid", type: "line", data: s1BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#fab005" }, itemStyle: { color: "#fab005" } },
+          { name: sym1 + " Ask", type: "line", data: s1AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#fab005", type: "dashed" }, itemStyle: { color: "#fab005" } },
+          { name: sym2 + " Bid", type: "line", data: s2BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#15aabf" }, itemStyle: { color: "#15aabf" } },
+          { name: sym2 + " Ask", type: "line", data: s2AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#15aabf", type: "dashed" }, itemStyle: { color: "#15aabf" } },
+          { name: "Gold Certificate Bid", type: "line", data: barBidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#40c057" }, itemStyle: { color: "#40c057" } },
+          { name: "Gold Certificate Ask", type: "line", data: barAskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#40c057", type: "dashed" }, itemStyle: { color: "#40c057" } },
+          { name: "Coin Certificate Bid", type: "line", data: coinBidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#e64980" }, itemStyle: { color: "#e64980" } },
+          { name: "Coin Certificate Ask", type: "line", data: coinAskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#e64980", type: "dashed" }, itemStyle: { color: "#e64980" } }
         ]
       }, true);
-      setStatus("Loaded " + s1BidData.length + " bid / " + s1AskData.length + " ask ticks for " + sym1 + " and " + s2BidData.length + "/" + s2AskData.length + " for " + sym2 + ".");
+      setStatus("Loaded normalized ETF and certificate quotes for the 12:00–18:00 trading session.");
     } else {
       if (series1Data.length === 0 && series2Data.length === 0) {
         AdminCharts.showEmpty(chart, "No data found for selected range.");
@@ -316,7 +312,7 @@
     if (isIntraday) {
       var dt = dateEl.value;
       if (!dt) { setStatus("Please pick a date.", true); return; }
-      url = "/api/v1/gold-analytics/compare/intraday?instrument1=" + encodeURIComponent(inst1) +
+      url = "/api/v1/gold-analytics/normalized-spread/intraday?instrument1=" + encodeURIComponent(inst1) +
             "&instrument2=" + encodeURIComponent(inst2) +
             "&date=" + encodeURIComponent(dt);
     } else {

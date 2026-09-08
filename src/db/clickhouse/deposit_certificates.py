@@ -65,6 +65,31 @@ async def history(symbol: str, start: datetime, end: datetime, limit: int) -> li
     return _rows(result)
 
 
+async def intraday_best_quotes(
+    symbol: str, trade_date: date, from_time: int = 120000, to_time: int = 180000
+) -> list[dict[str, Any]]:
+    client = await get_async_client()
+    as_time = lambda value: time(value // 10000, value // 100 % 100, value % 100)
+    start = datetime.combine(trade_date, as_time(from_time), TEHRAN)
+    end = datetime.combine(trade_date, as_time(to_time), TEHRAN)
+    result = await client.query(
+        f"SELECT "
+        "toUInt32(formatDateTime(toStartOfInterval(provider_event_at, INTERVAL 5 SECOND), '%H%i%s')) AS trade_time, "
+        "argMax(bid_price_1, tuple(provider_event_at, received_at, event_id)) AS best_bid, "
+        "argMax(ask_price_1, tuple(provider_event_at, received_at, event_id)) AS best_ask "
+        f"FROM `{TABLE}` FINAL "
+        "WHERE symbol = {symbol:String} "
+        "AND provider_event_at >= {start:DateTime64(3)} "
+        "AND provider_event_at <= {end:DateTime64(3)} "
+        "GROUP BY trade_time ORDER BY trade_time",
+        parameters={"symbol": symbol, "start": start, "end": end},
+    )
+    return [
+        {"trade_time": int(row[0]), "best_bid": float(row[1]), "best_ask": float(row[2])}
+        for row in result.result_rows
+    ]
+
+
 async def paginated(
     symbol: str | None, trade_date: date | None, offset: int, limit: int
 ) -> tuple[int, list[dict[str, Any]]]:
