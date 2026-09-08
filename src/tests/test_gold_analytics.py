@@ -31,6 +31,20 @@ async def test_api_gold_compare_intraday(mock_get_intraday) -> None:
         assert len(data["instrument2"]["points"]) == 1
         assert data["instrument1"]["points"][0]["price"] == 1000.0
         assert data["instrument2"]["points"][0]["price"] == 1050.0
+        assert all(call.kwargs["from_time"] == 120000 for call in mock_get_intraday.call_args_list)
+
+
+@pytest.mark.asyncio
+@patch("src.routes.gold_analytics.get_gold_order_book_micro_price_intraday", new_callable=AsyncMock)
+async def test_api_gold_compare_intraday_excludes_requested_preorder_quotes(mock_get_intraday) -> None:
+    mock_get_intraday.return_value = []
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        res = await ac.get("/api/v1/gold-analytics/compare/intraday?instrument1=G1&instrument2=G2&date=2026-08-01&from_time=114500")
+
+    assert res.status_code == 200
+    assert all(call.kwargs["from_time"] == 120000 for call in mock_get_intraday.call_args_list)
 
 
 @pytest.mark.asyncio

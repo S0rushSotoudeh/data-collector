@@ -11,6 +11,8 @@ from src.routes.yield_curve import _validate_hhmmss
 
 router = APIRouter(prefix="/api/v1", tags=["gold-analytics"])
 
+GOLD_ETF_TRADING_START = 120000
+
 
 @router.get("/gold-analytics/compare/intraday")
 async def api_gold_compare_intraday(
@@ -36,7 +38,7 @@ async def api_gold_compare_intraday(
     else:
         to_time = None
 
-    effective_from_time = from_time if from_time is not None else 113000
+    effective_from_time = max(from_time or GOLD_ETF_TRADING_START, GOLD_ETF_TRADING_START)
 
     points1 = await get_gold_order_book_micro_price_intraday(
         instrument_code=instrument1,
