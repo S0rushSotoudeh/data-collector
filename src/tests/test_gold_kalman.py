@@ -23,7 +23,7 @@ async def test_api_gold_normalized_spread_intraday(mock_get_certificates, mock_g
     ]
     mock_get_certificates.side_effect = [
         [{"trade_time": 120000, "best_bid": 2000.0, "best_ask": 2002.0}],
-        [{"trade_time": 120000, "best_bid": 3000.0, "best_ask": 3003.0}],
+        [{"trade_time": 120000, "best_bid": 3000.0, "best_ask": 3000.0}],
     ]
 
     transport = ASGITransport(app=app)
@@ -40,17 +40,21 @@ async def test_api_gold_normalized_spread_intraday(mock_get_certificates, mock_g
         assert len(pts1) == 2
         assert len(pts2) == 2
 
-        # First point log return starts at 0.0
+        # Each instrument uses its own combined bid/ask min-max scale.
         assert pts1[0]["bid"] == 0.0
-        assert pts1[0]["ask"] == 0.0
+        assert 0 < pts1[0]["ask"] < 1
         assert pts2[0]["bid"] == 0.0
-        assert pts2[0]["ask"] == 0.0
+        assert 0 < pts2[0]["ask"] < 1
 
-        # Second point log return is positive (price went up)
-        assert pts1[1]["bid"] > 0
-        assert pts2[1]["bid"] > 0
+        assert pts1[1]["ask"] == 1.0
+        assert pts2[1]["ask"] == 1.0
+        assert data["instrument1"]["scale"] == {"min": 1000.0, "max": 1011.0}
+        assert pts1[0]["bid_price"] == 1000.0
         assert [item["code"] for item in data["certificates"]] == ["GOLDBAR", "GOLDCOIN"]
         assert data["certificates"][0]["points"][0]["bid"] == 0.0
+        assert data["certificates"][0]["points"][0]["ask"] == 1.0
+        assert data["certificates"][1]["points"][0]["bid"] == 0.5
+        assert data["certificates"][1]["points"][0]["ask"] == 0.5
         assert all(call.kwargs["from_time"] == 120000 for call in mock_get_ob.call_args_list)
         assert all(call.kwargs["to_time"] == 180000 for call in mock_get_ob.call_args_list)
         assert all(call.args[2:] == (120000, 180000) for call in mock_get_certificates.call_args_list)

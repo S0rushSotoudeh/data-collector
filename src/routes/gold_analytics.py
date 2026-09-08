@@ -1,6 +1,5 @@
 import asyncio
 from datetime import date
-import math
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -108,32 +107,43 @@ async def api_gold_normalized_spread_intraday(
         intraday_best_quotes(SYMBOLS[1], date, effective_from_time, effective_to_time),
     )
 
-    def to_log_return(points: list, bid_init: float | None, ask_init: float | None) -> list[dict]:
+    def normalized(points: list[dict]) -> tuple[list[dict], dict[str, float | None]]:
+        prices = [
+            float(p[side])
+            for p in points
+            for side in ("best_bid", "best_ask")
+            if p.get(side, 0) > 0
+        ]
+        if not prices:
+            return [], {"min": None, "max": None}
+
+        minimum, maximum = min(prices), max(prices)
+        span = maximum - minimum
         out = []
         for p in points:
             bid = p.get("best_bid", 0)
             ask = p.get("best_ask", 0)
             entry: dict = {"t": p["trade_time"]}
-            if bid > 0 and bid_init:
-                entry["bid"] = round(math.log(bid / bid_init), 5)
-            if ask > 0 and ask_init:
-                entry["ask"] = round(math.log(ask / ask_init), 5)
+            if bid > 0:
+                entry.update(bid=round((bid - minimum) / span, 6) if span else 0.5, bid_price=bid)
+            if ask > 0:
+                entry.update(ask=round((ask - minimum) / span, 6) if span else 0.5, ask_price=ask)
             if "bid" in entry or "ask" in entry:
                 out.append(entry)
-        return out
+        return out, {"min": minimum, "max": maximum}
 
-    def normalized(points: list[dict]) -> list[dict]:
-        bid_init = next((p["best_bid"] for p in points if p.get("best_bid", 0) > 0), None)
-        ask_init = next((p["best_ask"] for p in points if p.get("best_ask", 0) > 0), None)
-        return to_log_return(points, bid_init, ask_init)
+    points1, scale1 = normalized(points1)
+    points2, scale2 = normalized(points2)
+    gold_bar, gold_bar_scale = normalized(gold_bar)
+    gold_coin, gold_coin_scale = normalized(gold_coin)
 
     return {
         "trade_date": str(date),
-        "instrument1": {"code": instrument1, "points": normalized(points1)},
-        "instrument2": {"code": instrument2, "points": normalized(points2)},
+        "instrument1": {"code": instrument1, "points": points1, "scale": scale1},
+        "instrument2": {"code": instrument2, "points": points2, "scale": scale2},
         "certificates": [
-            {"code": SYMBOLS[0], "points": normalized(gold_bar)},
-            {"code": SYMBOLS[1], "points": normalized(gold_coin)},
+            {"code": SYMBOLS[0], "points": gold_bar, "scale": gold_bar_scale},
+            {"code": SYMBOLS[1], "points": gold_coin, "scale": gold_coin_scale},
         ],
     }
 

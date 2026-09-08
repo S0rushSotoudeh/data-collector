@@ -29,6 +29,8 @@ def test_gold_best_quotes_chart_includes_normalized_certificates() -> None:
 
     assert "/gold-analytics/normalized-spread/intraday" in source
     assert "formatTime(p.t)" in source
+    assert "scaleText" in source
+    assert 'min: 0, max: 1' in source
     for label in ("Gold Certificate Bid", "Gold Certificate Ask", "Coin Certificate Bid", "Coin Certificate Ask"):
         assert label in source
 

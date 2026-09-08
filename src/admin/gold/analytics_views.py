@@ -38,7 +38,7 @@ class GoldBestQuotesChartView(BaseView):
             "request": request,
             "admin": self._admin_ref,
             "title": "Gold Best Quotes",
-            "subtitle": "Normalized best bid and ask for two gold ETFs plus gold and coin certificates, 12:00–18:00",
+            "subtitle": "Four independent min/max price scales for two gold ETFs plus gold and coin certificates, 12:00–18:00",
             "instruments": instruments,
         }
         ctx["url_for"] = lambda name, **params: request.url_for(name, **params)

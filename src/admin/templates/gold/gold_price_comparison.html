@@ -168,8 +168,8 @@
         points.forEach(function (p) {
           var tStr = formatTime(p.t);
           if (!timeMap[tStr]) { timeMap[tStr] = true; times.push(tStr); }
-          if (p.bid != null) bidData.push([tStr, p.bid]);
-          if (p.ask != null) askData.push([tStr, p.ask]);
+          if (p.bid != null) bidData.push([tStr, p.bid, p.bid_price]);
+          if (p.ask != null) askData.push([tStr, p.ask, p.ask_price]);
         });
       }
       addPoints(pts1, s1BidData, s1AskData);
@@ -213,7 +213,16 @@
       }
       chart.setOption({
         animation: false,
-        title: { text: "Normalized Best Quotes (" + data.trade_date + ", 12:00–18:00)", left: "center", top: 10 },
+        title: {
+          text: "Normalized Best Quotes (" + data.trade_date + ", 12:00–18:00)",
+          subtext: [
+            scaleText(sym1, data.instrument1),
+            scaleText(sym2, data.instrument2),
+            scaleText("Gold Certificate", certificates[0]),
+            scaleText("Coin Certificate", certificates[1])
+          ].join("\n"),
+          left: "center", top: 8
+        },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "cross", crossStyle: { color: "#999" } },
@@ -222,20 +231,21 @@
             var res = "<strong>" + params[0].value[0] + "</strong><br/>";
             params.forEach(function (item) {
               var val = item.value[1];
-              var formatted = val != null ? ((Math.exp(Number(val)) - 1) * 100).toFixed(3) + "%" : "—";
+              var raw = item.value[2];
+              var formatted = raw != null ? Number(raw).toLocaleString() + " IRR (" + (Number(val) * 100).toFixed(2) + "%)" : "—";
               res += item.marker + " " + item.seriesName + ": <strong>" + formatted + "</strong><br/>";
             });
             return res;
           }
         },
-        legend: { data: [sym1 + " Bid", sym1 + " Ask", sym2 + " Bid", sym2 + " Ask", "Gold Certificate Bid", "Gold Certificate Ask", "Coin Certificate Bid", "Coin Certificate Ask"], top: 35 },
-        grid: { left: "4%", right: "4%", bottom: "12%", top: "16%", containLabel: true },
+        legend: { data: [sym1 + " Bid", sym1 + " Ask", sym2 + " Bid", sym2 + " Ask", "Gold Certificate Bid", "Gold Certificate Ask", "Coin Certificate Bid", "Coin Certificate Ask"], top: 105 },
+        grid: { left: "4%", right: "4%", bottom: "12%", top: 150, containLabel: true },
         dataZoom: [
           { type: "inside", start: 0, end: 100 },
           { type: "slider", start: 0, end: 100, bottom: 5 }
         ],
         xAxis: { type: "category", data: times, boundaryGap: false },
-        yAxis: { type: "value", name: "Change from first quote", scale: true, axisLabel: { formatter: function (v) { return ((Math.exp(v) - 1) * 100).toFixed(2) + "%"; } } },
+        yAxis: { type: "value", name: "Position inside each price range", min: 0, max: 1, axisLabel: { formatter: function (v) { return (v * 100).toFixed(0) + "%"; } } },
         series: [
           { name: sym1 + " Bid", type: "line", data: s1BidData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.8, color: "#fab005" }, itemStyle: { color: "#fab005" } },
           { name: sym1 + " Ask", type: "line", data: s1AskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#fab005", type: "dashed" }, itemStyle: { color: "#fab005" } },
@@ -247,7 +257,7 @@
           { name: "Coin Certificate Ask", type: "line", data: coinAskData, sampling: "lttb", showSymbol: false, connectNulls: false, lineStyle: { width: 1.5, color: "#e64980", type: "dashed" }, itemStyle: { color: "#e64980" } }
         ]
       }, true);
-      setStatus("Loaded normalized ETF and certificate quotes for the 12:00–18:00 trading session.");
+      setStatus("Loaded four independently min/max-normalized price scales for the 12:00–18:00 trading session.");
     } else {
       if (series1Data.length === 0 && series2Data.length === 0) {
         AdminCharts.showEmpty(chart, "No data found for selected range.");
@@ -296,6 +306,12 @@
       }, true);
       setStatus("Loaded " + series1Data.length + " days.");
     }
+  }
+
+  function scaleText(name, item) {
+    var scale = item && item.scale;
+    if (!scale || scale.min == null || scale.max == null) return name + ": no data";
+    return name + ": min " + Number(scale.min).toLocaleString() + " / max " + Number(scale.max).toLocaleString() + " IRR";
   }
 
   async function loadData() {
