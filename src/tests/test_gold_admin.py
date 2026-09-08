@@ -1,5 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
+from sqladmin import Admin
+from starlette.applications import Starlette
 from starlette.datastructures import Headers
 from starlette.requests import Request
 
@@ -17,6 +19,9 @@ def test_gold_templates_compile() -> None:
 
 
 def test_gold_views_category_and_identity() -> None:
+    admin = Admin(Starlette())
+    admin.add_base_view(GoldOrderBookView)
+    admin.add_base_view(GoldTradesView)
     assert GoldInstrumentAdmin.category == "Gold Market"
     assert GoldInstrumentAdmin.identity == "gold-instrument"
     assert GoldOrderBookView.category == "Gold Market"
@@ -25,37 +30,34 @@ def test_gold_views_category_and_identity() -> None:
     assert GoldTradesView.identity == "gold_trades_list"
 
 
-@patch("src.admin.gold.views.count_stock_order_book", new_callable=AsyncMock)
-@patch("src.admin.gold.views.get_stock_order_book_paginated", new_callable=AsyncMock)
-async def test_gold_order_book_fetch(mock_get, mock_count) -> None:
-    mock_count.return_value = 10
+@patch("src.admin.gold.views._resolve_instrument_code", return_value="123")
+@patch("src.admin.market_data.market_data_page", new_callable=AsyncMock)
+async def test_gold_order_book_fetch(mock_get, mock_resolve) -> None:
     mock_get.return_value = [{"instrument_code": "gold1"}]
 
     view = GoldOrderBookView()
-    total, rows = await view.fetch(
-        {"instrument_code": "gold1", "trade_date": "2026-08-01", "depth_level": 1, "data_source": "tsetmc"},
-        offset=0,
-        limit=50,
-    )
-    assert total == 10
+    with patch.object(view, "resolve_instrument_code", mock_resolve):
+        rows = await view.fetch_rows(
+            {"instrument_code": "gold1", "trade_date": "2026-08-01", "depth_level": 1, "data_source": "tsetmc"},
+        )
     assert rows == [{"instrument_code": "gold1"}]
-    mock_count.assert_awaited_once()
     mock_get.assert_awaited_once()
+    assert mock_get.call_args.args[1]["instrument_code"] == "123"
+    assert mock_get.call_args.args[-1] == 101
 
 
-@patch("src.admin.gold.views.count_stock_trades", new_callable=AsyncMock)
-@patch("src.admin.gold.views.get_stock_trades_paginated", new_callable=AsyncMock)
-async def test_gold_trades_fetch(mock_get, mock_count) -> None:
-    mock_count.return_value = 5
+@patch("src.admin.gold.views._resolve_instrument_code", return_value="123")
+@patch("src.admin.market_data.market_data_page", new_callable=AsyncMock)
+async def test_gold_trades_fetch(mock_get, mock_resolve) -> None:
     mock_get.return_value = [{"instrument_code": "gold1", "price": 1000}]
 
     view = GoldTradesView()
-    total, rows = await view.fetch(
-        {"instrument_code": "gold1", "trade_date": "2026-08-01", "min_price": "100", "max_price": "2000", "is_canceled": 0, "data_source": "tsetmc"},
-        offset=0,
-        limit=50,
-    )
-    assert total == 5
+    with patch.object(view, "resolve_instrument_code", mock_resolve):
+        rows = await view.fetch_rows(
+            {"instrument_code": "gold1", "trade_date": "2026-08-01", "min_price": "100", "max_price": "2000", "is_canceled": 0, "data_source": "tsetmc"},
+        )
     assert rows == [{"instrument_code": "gold1", "price": 1000}]
-    mock_count.assert_awaited_once()
     mock_get.assert_awaited_once()
+    filters = mock_get.call_args.args[1]
+    assert filters["instrument_code"] == "123"
+    assert (filters["min_price"], filters["max_price"], filters["is_canceled"]) == (100, 2000, 0)

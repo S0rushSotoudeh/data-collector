@@ -13,7 +13,7 @@
 {% block content %}
 <div class="card filter-card">
   <div class="card-header">
-    <h3 class="card-title">Filters</h3>
+    <h3 class="card-title">Filters</h3><span class="text-muted ms-3">Defaults to the latest available date. Select a date to browse history.</span>
     <div class="card-actions">
       <a href="{{ request.url.path }}" class="btn btn-ghost-secondary btn-sm">Clear</a>
     </div>
@@ -27,7 +27,7 @@
         </div>
         <div class="col-md-2">
           <label class="form-label">Trade Date</label>
-          <input type="date" class="form-control" name="trade_date" value="{{ trade_date or '' }}">
+          <input type="date" class="form-control" name="trade_date" required value="{{ trade_date or '' }}">
         </div>
         <div class="col-md-2">
           <label class="form-label">Min Price</label>
@@ -58,7 +58,7 @@
   <div class="card-header">
     <h3 class="card-title">Gold ETF Trades</h3>
     <div class="card-actions">
-      <span class="text-muted">{{ total }} records</span>
+      <span class="text-muted">{{ rows | length }} records shown</span>
     </div>
   </div>
   <div class="table-responsive">
@@ -105,41 +105,6 @@
       </tbody>
     </table>
   </div>
-  {% if total > 0 %}
-  <div class="card-footer">
-    <div class="pagination-bar">
-      <div class="info">
-        Showing {{ ((page - 1) * page_size) + 1 }}–{% if page * page_size > total %}{{ total }}{% else %}{{ page * page_size }}{% endif %} of {{ total }}
-      </div>
-      <nav>
-        <ul class="pagination pagination-sm mb-0">
-          {% if page > 1 %}
-          <li class="page-item">
-            <a class="page-link" href="?{{ qs_page(page - 1) }}">Prev</a>
-          </li>
-          {% else %}
-          <li class="page-item disabled"><span class="page-link">Prev</span></li>
-          {% endif %}
-
-          {% set start_page = [1, page - 2] | max %}
-          {% set end_page = [total_pages, page + 2] | min %}
-          {% for p in range(start_page, end_page + 1) %}
-          <li class="page-item {% if p == page %}active{% endif %}">
-            <a class="page-link" href="?{{ qs_page(p) }}">{{ p }}</a>
-          </li>
-          {% endfor %}
-
-          {% if page < total_pages %}
-          <li class="page-item">
-            <a class="page-link" href="?{{ qs_page(page + 1) }}">Next</a>
-          </li>
-          {% else %}
-          <li class="page-item disabled"><span class="page-link">Next</span></li>
-          {% endif %}
-        </ul>
-      </nav>
-    </div>
-  </div>
-  {% endif %}
+  {% include "shared/market_pagination.html" %}
 </div>
 {% endblock %}

@@ -1,0 +1,10 @@
+<div class="card-footer">
+  <div class="pagination-bar">
+    <span class="text-muted">Showing {{ rows | length }} records for {{ trade_date or 'the selected date' }}</span>
+    <nav class="btn-list" aria-label="Record pages">
+      <a class="btn btn-sm" href="{{ first_url }}">First</a>
+      {% if prev_url %}<a class="btn btn-sm" href="{{ prev_url }}" rel="prev">Prev</a>{% endif %}
+      {% if next_url %}<a class="btn btn-sm" href="{{ next_url }}" rel="next">Next</a>{% endif %}
+    </nav>
+  </div>
+</div>
